@@ -1,0 +1,119 @@
+{
+  "version": "0.1.0",
+  "name": "sns_program",
+  "instructions": [
+    {
+      "name": "registerNode",
+      "accounts": [
+        { "name": "owner", "isMut": true, "isSigner": true },
+        { "name": "nodeAccount", "isMut": true, "isSigner": false },
+        { "name": "escrowAccount", "isMut": true, "isSigner": false },
+        { "name": "systemProgram", "isMut": false, "isSigner": false }
+      ],
+      "args": [
+        { "name": "endpoint", "type": "string" },
+        { "name": "stakeAmount", "type": "u64" }
+      ]
+    },
+    {
+      "name": "settlePayments",
+      "accounts": [
+        { "name": "owner", "isMut": true, "isSigner": true },
+        { "name": "nodeAccount", "isMut": true, "isSigner": false },
+        { "name": "escrowAccount", "isMut": true, "isSigner": false },
+        { "name": "systemProgram", "isMut": false, "isSigner": false }
+      ],
+      "args": [
+        {
+          "name": "receipts",
+          "type": { "vec": { "defined": "PaymentReceipt" } }
+        }
+      ]
+    },
+    {
+      "name": "slashNode",
+      "accounts": [
+        { "name": "authority", "isMut": true, "isSigner": true },
+        { "name": "owner", "isMut": true, "isSigner": false },
+        { "name": "programAuthority", "isMut": false, "isSigner": false },
+        { "name": "nodeAccount", "isMut": true, "isSigner": false },
+        { "name": "escrowAccount", "isMut": true, "isSigner": false },
+        { "name": "systemProgram", "isMut": false, "isSigner": false }
+      ],
+      "args": [
+        { "name": "reason", "type": "string" }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "NodeAccount",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "owner", "type": "publicKey" },
+          { "name": "endpoint", "type": "string" },
+          { "name": "stakeAmount", "type": "u64" },
+          { "name": "reputation", "type": "u8" },
+          { "name": "registeredAt", "type": "i64" },
+          { "name": "requestsServed", "type": "u64" },
+          { "name": "isInitialized", "type": "bool" }
+        ]
+      }
+    }
+  ],
+  "types": [
+    {
+      "name": "PaymentReceipt",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "client", "type": "publicKey" },
+          { "name": "amountLamports", "type": "u64" },
+          { "name": "nonce", "type": "u64" }
+        ]
+      }
+    }
+  ],
+  "events": [
+    {
+      "name": "NodeRegistered",
+      "fields": [
+        { "name": "owner", "type": "publicKey", "index": false },
+        { "name": "endpoint", "type": "string", "index": false },
+        { "name": "stakeAmount", "type": "u64", "index": false },
+        { "name": "timestamp", "type": "i64", "index": false }
+      ]
+    },
+    {
+      "name": "PaymentSettled",
+      "fields": [
+        { "name": "owner", "type": "publicKey", "index": false },
+        { "name": "totalLamports", "type": "u64", "index": false },
+        { "name": "receiptCount", "type": "u64", "index": false },
+        { "name": "timestamp", "type": "i64", "index": false }
+      ]
+    },
+    {
+      "name": "NodeSlashed",
+      "fields": [
+        { "name": "owner", "type": "publicKey", "index": false },
+        { "name": "reason", "type": "string", "index": false },
+        { "name": "prevReputation", "type": "u8", "index": false },
+        { "name": "newReputation", "type": "u8", "index": false },
+        { "name": "timestamp", "type": "i64", "index": false }
+      ]
+    }
+  ],
+  "errors": [
+    { "code": 6000, "name": "NodeAlreadyRegistered", "msg": "Node is already registered" },
+    { "code": 6001, "name": "InsufficientStake", "msg": "Insufficient stake (minimum 0.1 SOL required)" },
+    { "code": 6002, "name": "InvalidReceipt", "msg": "Invalid or empty payment receipt" },
+    { "code": 6003, "name": "Unauthorized", "msg": "Caller is not authorized" },
+    { "code": 6004, "name": "NodeNotFound", "msg": "Node not found or not initialized" },
+    { "code": 6005, "name": "InvalidEndpoint", "msg": "Endpoint string too long (max 100 chars)" }
+  ],
+  "metadata": {
+    "address": "3ibaKPYPhfuJNvGa2VZ6yTjjjegYFS1RkwjtfHJ5jjrR"
+  }
+}

@@ -1,0 +1,32 @@
+[package]
+name = "sns-daemon"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "sns-daemon"
+path = "src/main.rs"
+
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+axum = "0.7"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Explicit features list without "metrics" (which causes libp2p-kad version conflicts)
+libp2p = { version = "0.53", default-features = false, features = [
+  "kad",
+  "noise",
+  "yamux",
+  "tcp",
+  "tokio",
+  "macros",
+  "ed25519",
+] }
+anyhow = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+uuid = { version = "1", features = ["v4"] }
+dashmap = "5"
+reqwest = { version = "0.11", features = ["json"] }
+chrono = { version = "0.4", features = ["serde"] }
+tower-http = { version = "0.5", features = ["cors"] }
