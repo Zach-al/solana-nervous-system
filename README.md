@@ -1,4 +1,39 @@
-# 🧠 Solana Nervous System (SNS)
+# SOLNET — Decentralized RPC Mesh for Solana
+
+> Solana is decentralized. Its infrastructure should be too.
+
+## What is SOLNET?
+
+SOLNET replaces centralized RPC providers like Helius and QuickNode 
+with a self-healing peer-to-peer mesh network. Any device installs 
+our daemon in one command, joins the mesh, and earns SOL automatically 
+for routing blockchain traffic.
+
+## Live Demo
+- Dashboard: https://solnet.vercel.app
+- Node endpoint: https://your-railway-url.up.railway.app
+- Health check: https://your-railway-url.up.railway.app/health
+
+## Quick Start — Run a Node
+
+curl -fsSL https://raw.githubusercontent.com/yourusername/
+solana-nervous-system/main/install.sh | sh
+
+## Architecture
+
+Client SDK → DHT Peer Discovery → Nearest Node → Solana RPC
+                                        ↓
+                              Micropayment Receipt
+                                        ↓
+                              Hourly On-chain Settlement
+
+## Tech Stack
+- Rust + Tokio + Axum (daemon)
+- libp2p + Kademlia DHT (peer mesh)  
+- Anchor + Solana (smart contracts)
+- Next.js + Three.js (dashboard)
+
+Solana Nervous System (SNS)
 
 SNS is a **decentralized peer-to-peer RPC mesh network for Solana**. Any device can install the SNS daemon, join the global mesh, transparently proxy Solana JSON-RPC requests, and earn SOL micropayments automatically — all without any central coordinator.
 
