@@ -1,119 +1,610 @@
 {
-  "version": "0.1.0",
-  "name": "sns_program",
+  "address": "3ibaKPYPhfuJNvGa2VZ6yTjjjegYFS1RkwjtfHJ5jjrR",
+  "metadata": {
+    "name": "sns_program",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "Solana Nervous System — on-chain node registry, staking, and payment settlement"
+  },
   "instructions": [
     {
-      "name": "registerNode",
-      "accounts": [
-        { "name": "owner", "isMut": true, "isSigner": true },
-        { "name": "nodeAccount", "isMut": true, "isSigner": false },
-        { "name": "escrowAccount", "isMut": true, "isSigner": false },
-        { "name": "systemProgram", "isMut": false, "isSigner": false }
+      "name": "register_node",
+      "discriminator": [
+        102,
+        85,
+        117,
+        114,
+        194,
+        188,
+        211,
+        168
       ],
-      "args": [
-        { "name": "endpoint", "type": "string" },
-        { "name": "stakeAmount", "type": "u64" }
-      ]
-    },
-    {
-      "name": "settlePayments",
       "accounts": [
-        { "name": "owner", "isMut": true, "isSigner": true },
-        { "name": "nodeAccount", "isMut": true, "isSigner": false },
-        { "name": "escrowAccount", "isMut": true, "isSigner": false },
-        { "name": "systemProgram", "isMut": false, "isSigner": false }
+        {
+          "name": "owner",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "node_account",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  110,
+                  111,
+                  100,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              }
+            ]
+          }
+        },
+        {
+          "name": "escrow_account",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  101,
+                  115,
+                  99,
+                  114,
+                  111,
+                  119
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
       ],
       "args": [
         {
-          "name": "receipts",
-          "type": { "vec": { "defined": "PaymentReceipt" } }
+          "name": "endpoint",
+          "type": "string"
+        },
+        {
+          "name": "stake_amount",
+          "type": "u64"
         }
       ]
     },
     {
-      "name": "slashNode",
+      "name": "settle_payments",
+      "discriminator": [
+        228,
+        137,
+        157,
+        218,
+        144,
+        171,
+        119,
+        92
+      ],
       "accounts": [
-        { "name": "authority", "isMut": true, "isSigner": true },
-        { "name": "owner", "isMut": true, "isSigner": false },
-        { "name": "programAuthority", "isMut": false, "isSigner": false },
-        { "name": "nodeAccount", "isMut": true, "isSigner": false },
-        { "name": "escrowAccount", "isMut": true, "isSigner": false },
-        { "name": "systemProgram", "isMut": false, "isSigner": false }
+        {
+          "name": "owner",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "node_account",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  110,
+                  111,
+                  100,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              }
+            ]
+          }
+        },
+        {
+          "name": "escrow_account",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  101,
+                  115,
+                  99,
+                  114,
+                  111,
+                  119
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              }
+            ]
+          }
+        },
+        {
+          "name": "nonce_account",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  110,
+                  111,
+                  110,
+                  99,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              },
+              {
+                "kind": "arg",
+                "path": "instruction_nonce"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
       ],
       "args": [
-        { "name": "reason", "type": "string" }
+        {
+          "name": "receipts",
+          "type": {
+            "vec": {
+              "defined": {
+                "name": "PaymentReceipt"
+              }
+            }
+          }
+        },
+        {
+          "name": "instruction_timestamp",
+          "type": "i64"
+        },
+        {
+          "name": "instruction_nonce",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "slash_node",
+      "discriminator": [
+        165,
+        178,
+        153,
+        22,
+        241,
+        166,
+        114,
+        236
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "owner",
+          "writable": true
+        },
+        {
+          "name": "program_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "node_account",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  110,
+                  111,
+                  100,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              }
+            ]
+          }
+        },
+        {
+          "name": "escrow_account",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  101,
+                  115,
+                  99,
+                  114,
+                  111,
+                  119
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "reason",
+          "type": "string"
+        }
       ]
     }
   ],
   "accounts": [
     {
       "name": "NodeAccount",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          { "name": "owner", "type": "publicKey" },
-          { "name": "endpoint", "type": "string" },
-          { "name": "stakeAmount", "type": "u64" },
-          { "name": "reputation", "type": "u8" },
-          { "name": "registeredAt", "type": "i64" },
-          { "name": "requestsServed", "type": "u64" },
-          { "name": "isInitialized", "type": "bool" }
-        ]
-      }
-    }
-  ],
-  "types": [
+      "discriminator": [
+        125,
+        166,
+        18,
+        146,
+        195,
+        127,
+        86,
+        220
+      ]
+    },
     {
-      "name": "PaymentReceipt",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          { "name": "client", "type": "publicKey" },
-          { "name": "amountLamports", "type": "u64" },
-          { "name": "nonce", "type": "u64" }
-        ]
-      }
+      "name": "NonceAccount",
+      "discriminator": [
+        110,
+        202,
+        133,
+        201,
+        147,
+        206,
+        238,
+        84
+      ]
     }
   ],
   "events": [
     {
       "name": "NodeRegistered",
-      "fields": [
-        { "name": "owner", "type": "publicKey", "index": false },
-        { "name": "endpoint", "type": "string", "index": false },
-        { "name": "stakeAmount", "type": "u64", "index": false },
-        { "name": "timestamp", "type": "i64", "index": false }
-      ]
-    },
-    {
-      "name": "PaymentSettled",
-      "fields": [
-        { "name": "owner", "type": "publicKey", "index": false },
-        { "name": "totalLamports", "type": "u64", "index": false },
-        { "name": "receiptCount", "type": "u64", "index": false },
-        { "name": "timestamp", "type": "i64", "index": false }
+      "discriminator": [
+        15,
+        57,
+        183,
+        59,
+        93,
+        55,
+        157,
+        195
       ]
     },
     {
       "name": "NodeSlashed",
-      "fields": [
-        { "name": "owner", "type": "publicKey", "index": false },
-        { "name": "reason", "type": "string", "index": false },
-        { "name": "prevReputation", "type": "u8", "index": false },
-        { "name": "newReputation", "type": "u8", "index": false },
-        { "name": "timestamp", "type": "i64", "index": false }
+      "discriminator": [
+        195,
+        114,
+        214,
+        16,
+        173,
+        73,
+        177,
+        87
+      ]
+    },
+    {
+      "name": "PaymentSettled",
+      "discriminator": [
+        158,
+        182,
+        152,
+        76,
+        105,
+        23,
+        232,
+        135
       ]
     }
   ],
   "errors": [
-    { "code": 6000, "name": "NodeAlreadyRegistered", "msg": "Node is already registered" },
-    { "code": 6001, "name": "InsufficientStake", "msg": "Insufficient stake (minimum 0.1 SOL required)" },
-    { "code": 6002, "name": "InvalidReceipt", "msg": "Invalid or empty payment receipt" },
-    { "code": 6003, "name": "Unauthorized", "msg": "Caller is not authorized" },
-    { "code": 6004, "name": "NodeNotFound", "msg": "Node not found or not initialized" },
-    { "code": 6005, "name": "InvalidEndpoint", "msg": "Endpoint string too long (max 100 chars)" }
+    {
+      "code": 6000,
+      "name": "NodeAlreadyRegistered",
+      "msg": "Node is already registered"
+    },
+    {
+      "code": 6001,
+      "name": "InsufficientStake",
+      "msg": "Insufficient stake (minimum 0.1 SOL required)"
+    },
+    {
+      "code": 6002,
+      "name": "InvalidReceipt",
+      "msg": "Invalid or empty payment receipt"
+    },
+    {
+      "code": 6003,
+      "name": "Unauthorized",
+      "msg": "Caller is not authorized"
+    },
+    {
+      "code": 6004,
+      "name": "NodeNotFound",
+      "msg": "Node not found or not initialized"
+    },
+    {
+      "code": 6005,
+      "name": "InvalidEndpoint",
+      "msg": "Endpoint string too long (max 100 chars)"
+    },
+    {
+      "code": 6006,
+      "name": "Overflow",
+      "msg": "Math overflow"
+    },
+    {
+      "code": 6007,
+      "name": "Reentrancy",
+      "msg": "Reentrancy detected"
+    },
+    {
+      "code": 6008,
+      "name": "ReplayAttack",
+      "msg": "Replay attack detected"
+    },
+    {
+      "code": 6009,
+      "name": "NonceAlreadyUsed",
+      "msg": "Nonce already used"
+    },
+    {
+      "code": 6010,
+      "name": "InsufficientEscrow",
+      "msg": "Insufficient escrow balance"
+    },
+    {
+      "code": 6011,
+      "name": "NodeSlashed",
+      "msg": "Node has been slashed"
+    },
+    {
+      "code": 6012,
+      "name": "TimestampExpired",
+      "msg": "Timestamp expired"
+    },
+    {
+      "code": 6013,
+      "name": "InvalidSignature",
+      "msg": "Invalid signature"
+    },
+    {
+      "code": 6014,
+      "name": "AccountFrozen",
+      "msg": "Account is frozen"
+    }
   ],
-  "metadata": {
-    "address": "3ibaKPYPhfuJNvGa2VZ6yTjjjegYFS1RkwjtfHJ5jjrR"
-  }
+  "types": [
+    {
+      "name": "NodeAccount",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "endpoint",
+            "type": "string"
+          },
+          {
+            "name": "stake_amount",
+            "type": "u64"
+          },
+          {
+            "name": "reputation",
+            "type": "u8"
+          },
+          {
+            "name": "registered_at",
+            "type": "i64"
+          },
+          {
+            "name": "requests_served",
+            "type": "u64"
+          },
+          {
+            "name": "is_initialized",
+            "type": "bool"
+          },
+          {
+            "name": "locked",
+            "type": "bool"
+          },
+          {
+            "name": "last_receipt_nonce",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "NodeRegistered",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "endpoint",
+            "type": "string"
+          },
+          {
+            "name": "stake_amount",
+            "type": "u64"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "NodeSlashed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "reason",
+            "type": "string"
+          },
+          {
+            "name": "prev_reputation",
+            "type": "u8"
+          },
+          {
+            "name": "new_reputation",
+            "type": "u8"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "NonceAccount",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "is_used",
+            "type": "bool"
+          },
+          {
+            "name": "nonce_value",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PaymentReceipt",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "client",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount_lamports",
+            "type": "u64"
+          },
+          {
+            "name": "nonce",
+            "type": "u64"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PaymentSettled",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "total_lamports",
+            "type": "u64"
+          },
+          {
+            "name": "receipt_count",
+            "type": "u64"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          }
+        ]
+      }
+    }
+  ]
 }

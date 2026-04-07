@@ -14,7 +14,8 @@ impl Config {
         Self {
             solana_rpc_url: env::var("SOLANA_RPC_URL")
                 .unwrap_or_else(|_| "https://api.devnet.solana.com".to_string()),
-            http_port: env::var("HTTP_PORT")
+            http_port: env::var("PORT")
+                .or_else(|_| env::var("HTTP_PORT"))
                 .ok()
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(9000),

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useRef, useCallback } from 'react';
+import { secureFetch } from '../lib/secure-fetch';
 
 interface NodeStats {
   node_id: string;
@@ -55,11 +56,9 @@ export default function StatsPanel() {
 
   const fetchStats = useCallback(async () => {
     try {
-      const hostname = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
-      const daemonUrl = process.env.NEXT_PUBLIC_DAEMON_URL || `http://${hostname}:9000`;
-      const res = await fetch(`${daemonUrl}/stats`, {
-        signal: AbortSignal.timeout(2500),
-      });
+      const nodeUrl =
+        process.env.NEXT_PUBLIC_NODE_URL || 'https://solnet-production.up.railway.app';
+      const res = await secureFetch(`${nodeUrl}/stats`);
       if (!res.ok) throw new Error('bad status');
       const data: NodeStats = await res.json();
       setStats(data);

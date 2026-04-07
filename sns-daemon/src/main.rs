@@ -1,6 +1,7 @@
 mod config;
 mod p2p;
 mod rpc_proxy;
+mod security;
 
 use anyhow::Result;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};

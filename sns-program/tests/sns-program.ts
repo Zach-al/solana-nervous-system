@@ -1,6 +1,7 @@
 import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
-import { SnsProgram, IDL } from "../target/types/sns_program";
+import { SnsProgram } from "../target/types/sns_program";
+const IDL = require("../target/idl/sns_program.json");
 import { PublicKey, SystemProgram, LAMPORTS_PER_SOL } from "@solana/web3.js";
 import { expect } from "chai";
 
@@ -11,7 +12,7 @@ describe("sns-program", () => {
   // Use the hand-authored IDL directly (since anchor build IDL generation is
   // broken on Rust stable due to anchor-syn 0.30.1 / proc-macro2 incompatibility)
   const programId = new PublicKey("3ibaKPYPhfuJNvGa2VZ6yTjjjegYFS1RkwjtfHJ5jjrR");
-  const program = new Program<SnsProgram>(IDL, provider);
+  const program = new Program<SnsProgram>(IDL as unknown as SnsProgram, provider);
 
   const owner = provider.wallet as anchor.Wallet;
 
@@ -39,18 +40,18 @@ describe("sns-program", () => {
     const stakeAmount = new anchor.BN(0.2 * LAMPORTS_PER_SOL);
 
     await program.methods
-      // Anchor 0.30 uses IDL names verbatim — snake_case from lib.rs
-      .register_node(endpoint, stakeAmount)
+      .registerNode(endpoint, stakeAmount)
+      // @ts-ignore - Anchor 0.30 strict type mapping with PDA resolution
       .accounts({
         owner: owner.publicKey,
-        node_account: nodeAccountPda,
-        escrow_account: escrowAccountPda,
-        system_program: SystemProgram.programId,
-      })
+        nodeAccount: nodeAccountPda,
+        escrowAccount: escrowAccountPda,
+        systemProgram: SystemProgram.programId,
+      } as any)
       .rpc();
 
     // Account namespace uses PascalCase as defined in #[account] struct name
-    const nodeAccount = await program.account.NodeAccount.fetch(nodeAccountPda);
+    const nodeAccount = await program.account.nodeAccount.fetch(nodeAccountPda);
 
     expect(nodeAccount.owner.toString()).to.equal(owner.publicKey.toString());
     expect(nodeAccount.endpoint).to.equal(endpoint);
@@ -75,31 +76,43 @@ describe("sns-program", () => {
     const receipts = [
       {
         client: owner.publicKey,
-        amount_lamports: new anchor.BN(50_000),
+        amountLamports: new anchor.BN(50_000),
         nonce: new anchor.BN(1),
+        timestamp: new anchor.BN(Math.floor(Date.now() / 1000)),
       },
       {
         client: owner.publicKey,
-        amount_lamports: new anchor.BN(50_000),
+        amountLamports: new anchor.BN(50_000),
         nonce: new anchor.BN(2),
+        timestamp: new anchor.BN(Math.floor(Date.now() / 1000)),
       },
     ];
 
+    const instructionTimestamp = new anchor.BN(Math.floor(Date.now() / 1000));
+    const instructionNonce = new anchor.BN(12345);
+
+    const [nonceAccountPda] = PublicKey.findProgramAddressSync(
+      [Buffer.from("nonce"), owner.publicKey.toBuffer(), Buffer.from(instructionNonce.toArray("le", 8))],
+      programId
+    );
+
     await program.methods
-      .settle_payments(receipts)
+      .settlePayments(receipts, instructionTimestamp, instructionNonce)
+      // @ts-ignore - Anchor 0.30 strict type mapping with PDA resolution
       .accounts({
         owner: owner.publicKey,
-        node_account: nodeAccountPda,
-        escrow_account: escrowAccountPda,
-        system_program: SystemProgram.programId,
-      })
+        nodeAccount: nodeAccountPda,
+        escrowAccount: escrowAccountPda,
+        nonceAccount: nonceAccountPda,
+        systemProgram: SystemProgram.programId,
+      } as any)
       .rpc();
 
     const ownerBalanceAfter = await provider.connection.getBalance(owner.publicKey);
-    const nodeAccount = await program.account.NodeAccount.fetch(nodeAccountPda);
+    const nodeAccount = await program.account.nodeAccount.fetch(nodeAccountPda);
 
-    // Balance should rise by ~100_000 lamports minus tx fees
-    expect(ownerBalanceAfter).to.be.gt(ownerBalanceBefore - 10_000);
+    // Balance should rise by 100_000 lamports minus tx fees minus rent for nonce PDA (~1,000_000 lamports)
+    expect(ownerBalanceAfter).to.be.gt(ownerBalanceBefore - 2_000_000);
     expect((nodeAccount as any).requestsServed.toNumber()).to.equal(2);
 
     console.log("✅ Payment settled. Requests served:", (nodeAccount as any).requestsServed.toNumber());
@@ -118,18 +131,19 @@ describe("sns-program", () => {
 
     try {
       await program.methods
-        .slash_node("test slash")
+        .slashNode("test slash")
+        // @ts-ignore - Anchor 0.30 strict type mapping with PDA resolution
         .accounts({
           authority: owner.publicKey,
           owner: owner.publicKey,
-          program_authority: authorityPda,
-          node_account: nodeAccountPda,
-          escrow_account: escrowAccountPda,
-          system_program: SystemProgram.programId,
-        })
+          programAuthority: authorityPda,
+          nodeAccount: nodeAccountPda,
+          escrowAccount: escrowAccountPda,
+          systemProgram: SystemProgram.programId,
+        } as any)
         .rpc();
 
-      const nodeAccount = await program.account.NodeAccount.fetch(nodeAccountPda);
+      const nodeAccount = await program.account.nodeAccount.fetch(nodeAccountPda);
       expect(nodeAccount.reputation).to.equal(80); // 100 - 20
       console.log("✅ Node slashed. New reputation:", nodeAccount.reputation);
     } catch (e) {

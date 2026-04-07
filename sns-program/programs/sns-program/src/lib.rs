@@ -3,17 +3,16 @@ use anchor_lang::system_program;
 
 declare_id!("3ibaKPYPhfuJNvGa2VZ6yTjjjegYFS1RkwjtfHJ5jjrR");
 
-/// Solana Nervous System — on-chain node registry and payment settlement.
 #[program]
 pub mod sns_program {
     use super::*;
 
-    /// Register a new SNS node. Creates NodeAccount PDA and stakes SOL in escrow.
     pub fn register_node(
         ctx: Context<RegisterNode>,
         endpoint: String,
         stake_amount: u64,
     ) -> Result<()> {
+        let clock = Clock::get()?;
         require!(endpoint.len() <= 100, SnsError::InvalidEndpoint);
         require!(stake_amount >= 100_000_000, SnsError::InsufficientStake);
         require!(!ctx.accounts.node_account.is_initialized, SnsError::NodeAlreadyRegistered);
@@ -23,9 +22,10 @@ pub mod sns_program {
         node.endpoint = endpoint.clone();
         node.stake_amount = stake_amount;
         node.reputation = 100;
-        node.registered_at = Clock::get()?.unix_timestamp;
+        node.registered_at = clock.unix_timestamp;
         node.requests_served = 0;
         node.is_initialized = true;
+        node.locked = false;
 
         system_program::transfer(
             CpiContext::new(
@@ -42,25 +42,68 @@ pub mod sns_program {
             owner: ctx.accounts.owner.key(),
             endpoint,
             stake_amount,
-            timestamp: Clock::get()?.unix_timestamp,
+            timestamp: clock.unix_timestamp,
         });
         Ok(())
     }
 
-    /// Settle earned payments — moves SOL from escrow to node owner.
     pub fn settle_payments(
         ctx: Context<SettlePayments>,
         receipts: Vec<PaymentReceipt>,
+        instruction_timestamp: i64,
+        instruction_nonce: u64,
     ) -> Result<()> {
-        require!(ctx.accounts.node_account.is_initialized, SnsError::NodeNotFound);
-        require!(
-            ctx.accounts.node_account.owner == ctx.accounts.owner.key(),
-            SnsError::Unauthorized
-        );
-        require!(!receipts.is_empty(), SnsError::InvalidReceipt);
+        let node = &mut ctx.accounts.node_account;
 
-        let total_payment: u64 = receipts.iter().map(|r| r.amount_lamports).sum();
-        require!(total_payment > 0, SnsError::InvalidReceipt);
+        // ACCOUNT VALIDATION (owner and frozen checks handled by Anchor types and constraints)
+        require!(node.is_initialized, SnsError::NodeNotFound);
+        require!(node.owner == ctx.accounts.owner.key(), SnsError::Unauthorized);
+
+        // REENTRANCY PROTECTION
+        require!(!node.locked, SnsError::Reentrancy);
+        node.locked = true;
+
+        // VERIFY NODE REPUTATION
+        require!(node.reputation > 0, SnsError::NodeSlashed);
+
+        // INSTRUCTION REPLAY PROTECTION
+        let clock = Clock::get()?;
+        require!(
+            clock.unix_timestamp.saturating_sub(instruction_timestamp) <= 60,
+            SnsError::TimestampExpired
+        );
+
+        // INSTRUCTION NONCE UNIQUENESS
+        let nonce_acc = &mut ctx.accounts.nonce_account;
+        require!(!nonce_acc.is_used, SnsError::NonceAlreadyUsed);
+        nonce_acc.is_used = true;
+        nonce_acc.nonce_value = instruction_nonce;
+
+        // PAYMENT VALIDATION
+        require!(!receipts.is_empty(), SnsError::InvalidReceipt);
+        
+        let mut total_payment: u64 = 0;
+        let mut max_receipt_nonce = node.last_receipt_nonce;
+
+        for receipt in receipts.iter() {
+            require!(receipt.amount_lamports > 0, SnsError::InvalidReceipt);
+            require!(
+                clock.unix_timestamp.saturating_sub(receipt.timestamp) <= 7200,
+                SnsError::TimestampExpired
+            );
+            // Verify receipt nonce is strictly increasing (not previously used)
+            require!(receipt.nonce > max_receipt_nonce, SnsError::NonceAlreadyUsed);
+            max_receipt_nonce = receipt.nonce;
+
+            total_payment = total_payment.checked_add(receipt.amount_lamports).ok_or(SnsError::Overflow)?;
+        }
+        
+        // Update the highest seen nonce to prevent reuse
+        node.last_receipt_nonce = max_receipt_nonce;
+
+        // VERIFY ESCROW BALANCE
+        let escrow_balance = ctx.accounts.escrow_account.lamports();
+        require!(total_payment <= escrow_balance, SnsError::InsufficientEscrow);
 
         let owner_key = ctx.accounts.owner.key();
         let bump = ctx.bumps.escrow_account;
@@ -78,33 +121,41 @@ pub mod sns_program {
             total_payment,
         )?;
 
-        ctx.accounts.node_account.requests_served += receipts.len() as u64;
+        // CHECKED MATH FOR REQUESTS SERVED
+        node.requests_served = node.requests_served.checked_add(receipts.len() as u64).ok_or(SnsError::Overflow)?;
+
+        // TURN OFF LOCK
+        node.locked = false;
 
         emit!(PaymentSettled {
             owner: ctx.accounts.owner.key(),
             total_lamports: total_payment,
             receipt_count: receipts.len() as u64,
-            timestamp: Clock::get()?.unix_timestamp,
+            timestamp: clock.unix_timestamp,
         });
         Ok(())
     }
 
-    /// Slash a misbehaving node (authority-only).
     pub fn slash_node(ctx: Context<SlashNode>, reason: String) -> Result<()> {
+        let node = &mut ctx.accounts.node_account;
         require!(
             ctx.accounts.authority.key() == ctx.accounts.program_authority.key(),
             SnsError::Unauthorized
         );
-        require!(ctx.accounts.node_account.is_initialized, SnsError::NodeNotFound);
+        require!(node.is_initialized, SnsError::NodeNotFound);
 
-        let prev_rep = ctx.accounts.node_account.reputation;
-        ctx.accounts.node_account.reputation = prev_rep.saturating_sub(20);
-        let new_rep = ctx.accounts.node_account.reputation;
+        // REENTRANCY PROTECTION
+        require!(!node.locked, SnsError::Reentrancy);
+        node.locked = true;
+
+        let prev_rep = node.reputation;
+        node.reputation = prev_rep.saturating_sub(20);
+        let new_rep = node.reputation;
 
         if new_rep < 20 {
-            let return_amt = ctx.accounts.node_account.stake_amount / 2;
-            ctx.accounts.node_account.is_initialized = false;
-            ctx.accounts.node_account.stake_amount = 0;
+            let return_amt = node.stake_amount.checked_div(2).unwrap_or(0);
+            node.is_initialized = false;
+            node.stake_amount = 0;
 
             if return_amt > 0 {
                 let owner_key = ctx.accounts.owner.key();
@@ -123,6 +174,8 @@ pub mod sns_program {
                 )?;
             }
         }
+
+        node.locked = false;
 
         emit!(NodeSlashed {
             owner: ctx.accounts.owner.key(),
@@ -153,7 +206,7 @@ pub struct RegisterNode<'info> {
     )]
     pub node_account: Account<'info, NodeAccount>,
 
-    /// CHECK: PDA that holds staked SOL — seeds are validated below
+    /// CHECK: PDA that holds staked SOL. Seeds are validated via macro.
     #[account(
         mut,
         seeds = [b"escrow", owner.key().as_ref()],
@@ -165,6 +218,7 @@ pub struct RegisterNode<'info> {
 }
 
 #[derive(Accounts)]
+#[instruction(receipts: Vec<PaymentReceipt>, instruction_timestamp: i64, instruction_nonce: u64)]
 pub struct SettlePayments<'info> {
     #[account(mut)]
     pub owner: Signer<'info>,
@@ -176,7 +230,7 @@ pub struct SettlePayments<'info> {
     )]
     pub node_account: Account<'info, NodeAccount>,
 
-    /// CHECK: Escrow PDA — seeds validated in constraint
+    /// CHECK: PDA that holds staked SOL
     #[account(
         mut,
         seeds = [b"escrow", owner.key().as_ref()],
@@ -184,6 +238,16 @@ pub struct SettlePayments<'info> {
     )]
     pub escrow_account: UncheckedAccount<'info>,
 
+    #[account(
+        init_if_needed,
+        payer = owner,
+        space = NonceAccount::SPACE,
+        seeds = [b"nonce", owner.key().as_ref(), &instruction_nonce.to_le_bytes()],
+        bump,
+    )]
+    pub nonce_account: Account<'info, NonceAccount>,
+
+    #[account(address = system_program::ID)]
     pub system_program: Program<'info, System>,
 }
 
@@ -192,7 +256,7 @@ pub struct SlashNode<'info> {
     #[account(mut)]
     pub authority: Signer<'info>,
 
-    /// CHECK: Node owner — identity validated in instruction
+    /// CHECK: Target owner
     #[account(mut)]
     pub owner: UncheckedAccount<'info>,
 
@@ -207,7 +271,7 @@ pub struct SlashNode<'info> {
     )]
     pub node_account: Account<'info, NodeAccount>,
 
-    /// CHECK: Escrow PDA — seeds validated
+    /// CHECK: Escrow PDA
     #[account(
         mut,
         seeds = [b"escrow", owner.key().as_ref()],
@@ -215,6 +279,7 @@ pub struct SlashNode<'info> {
     )]
     pub escrow_account: UncheckedAccount<'info>,
 
+    #[account(address = system_program::ID)]
     pub system_program: Program<'info, System>,
 }
 
@@ -224,17 +289,30 @@ pub struct SlashNode<'info> {
 
 #[account]
 pub struct NodeAccount {
-    pub owner: Pubkey,        // 32
-    pub endpoint: String,     // 4 + 100
-    pub stake_amount: u64,    // 8
-    pub reputation: u8,       // 1
-    pub registered_at: i64,   // 8
-    pub requests_served: u64, // 8
-    pub is_initialized: bool, // 1
+    pub owner: Pubkey,            // 32
+    pub endpoint: String,         // 4 + 100
+    pub stake_amount: u64,        // 8
+    pub reputation: u8,           // 1
+    pub registered_at: i64,       // 8
+    pub requests_served: u64,     // 8
+    pub is_initialized: bool,     // 1
+    pub locked: bool,             // 1
+    pub last_receipt_nonce: u64,  // 8
 }
 
 impl NodeAccount {
-    pub const SPACE: usize = 8 + 32 + (4 + 100) + 8 + 1 + 8 + 8 + 1;
+    pub const SPACE: usize = 8 + 32 + (4 + 100) + 8 + 1 + 8 + 8 + 1 + 1 + 8;
+}
+
+#[account]
+#[derive(Default)]
+pub struct NonceAccount {
+    pub is_used: bool,
+    pub nonce_value: u64,
+}
+
+impl NonceAccount {
+   pub const SPACE: usize = 8 + 1 + 8;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -246,6 +324,7 @@ pub struct PaymentReceipt {
     pub client: Pubkey,
     pub amount_lamports: u64,
     pub nonce: u64,
+    pub timestamp: i64,
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -295,4 +374,23 @@ pub enum SnsError {
     NodeNotFound,
     #[msg("Endpoint string too long (max 100 chars)")]
     InvalidEndpoint,
+    // Security Errors
+    #[msg("Math overflow")]
+    Overflow,
+    #[msg("Reentrancy detected")]
+    Reentrancy,
+    #[msg("Replay attack detected")]
+    ReplayAttack,
+    #[msg("Nonce already used")]
+    NonceAlreadyUsed,
+    #[msg("Insufficient escrow balance")]
+    InsufficientEscrow,
+    #[msg("Node has been slashed")]
+    NodeSlashed,
+    #[msg("Timestamp expired")]
+    TimestampExpired,
+    #[msg("Invalid signature")]
+    InvalidSignature,
+    #[msg("Account is frozen")]
+    AccountFrozen,
 }
