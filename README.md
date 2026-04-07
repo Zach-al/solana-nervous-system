@@ -98,30 +98,12 @@ solana-nervous-system/
 ```
 
 ## Build Status
-
 | Component | Status | Notes |
 |-----------|--------|-------|
 | `sns-daemon` | ✅ Builds clean | `cargo build` + `cargo clippy` — zero warnings |
-| `sns-program` binary | ✅ Builds clean | `make build-sbf` → `target/deploy/sns_program.so` (226KB) |
-| `sns-program` IDL | ⚠️ Auto-gen fails | See Known Issues below; hand-authored IDL committed |
-| `dashboard` | ✅ Builds clean | `npm run build` — all TypeScript checks pass |
-
-## Known Issues
-
-### IDL Generation (`anchor-syn 0.30.1` + Rust stable)
-
-`anchor-syn 0.30.1` calls `proc_macro2::Span::source_file()` which was removed from
-`proc-macro2` in v1.0.80. The call is inside a `#[cfg(procmacro2_semver_exempt)]` block
-but Rust still type-checks it, so the IDL generation step errors out on Rust stable.
-
-**This is a tooling issue only.** The program logic, instruction handlers, account
-structs, and payment model are fully implemented and functionally correct.
-
-**Workaround:** Use `make build-sbf` for the .so binary. A hand-authored
-`target/idl/sns_program.json` is kept in sync with `lib.rs` and can be used directly
-with `@coral-xyz/anchor` in tests and client code.
-
-**Upstream tracking:** [coral-xyz/anchor#3392](https://github.com/coral-xyz/anchor/issues/3392)
+| `sns-program` binary | ✅ Builds clean | `make build-sbf` → `target/deploy/sns_program.so` |
+| `sns-program` IDL | ✅ Auto-gen succeeds | Anchor 0.30 IDL generation + TypeScript tests passing strictly |
+| `dashboard` | ✅ Builds clean | `npm run build` — all TypeScript checks & Turbopack pass |
 
 ## Roadmap
 
