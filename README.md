@@ -10,9 +10,9 @@ our daemon in one command, joins the mesh, and earns SOL automatically
 for routing blockchain traffic.
 
 ## Live Demo
-- Dashboard: https://solnet.vercel.app
-- Node endpoint: https://your-railway-url.up.railway.app
-- Health check: https://your-railway-url.up.railway.app/health
+- Dashboard: https://solnet-wheat.vercel.app/
+- Node endpoint: https://solnet-production.up.railway.app/
+- Health check: https://solnet-production.up.railway.app/health
 
 ## Quick Start — Run a Node
 

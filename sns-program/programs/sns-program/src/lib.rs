@@ -88,7 +88,7 @@ pub mod sns_program {
         for receipt in receipts.iter() {
             require!(receipt.amount_lamports > 0, SnsError::InvalidReceipt);
             require!(
-                clock.unix_timestamp.saturating_sub(receipt.timestamp) <= 7200,
+                clock.unix_timestamp.saturating_sub(receipt.timestamp) <= 3600,
                 SnsError::TimestampExpired
             );
             // Verify receipt nonce is strictly increasing (not previously used)
