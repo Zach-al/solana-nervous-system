@@ -25,6 +25,34 @@ function formatEarnings(sol: number): string {
   return sol.toFixed(8);
 }
 
+function useAnimatedValue(value: number, duration: number = 1000): number {
+  const [current, setCurrent] = useState(value);
+  
+  useEffect(() => {
+    if (value === current) return;
+    const startValue = current;
+    const endValue = value;
+    const startTime = performance.now();
+    
+    let req: number;
+    const step = (time: number) => {
+      const elapsed = time - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      const ease = progress === 1 ? 1 : 1 - Math.pow(2, -10 * progress);
+      setCurrent(startValue + (endValue - startValue) * ease);
+      
+      if (progress < 1) {
+        req = requestAnimationFrame(step);
+      }
+    };
+    req = requestAnimationFrame(step);
+    
+    return () => cancelAnimationFrame(req);
+  }, [value, current, duration]);
+  
+  return current;
+}
+
 interface StatCardProps {
   label: string;
   value: string | number;
@@ -91,6 +119,7 @@ export default function StatsPanel() {
   }, [fetchStats]);
 
   const earningsSol = stats ? stats.earnings_sol : 0;
+  const animatedEarningsSol = useAnimatedValue(earningsSol, 1000);
   const earningsBarWidth = Math.min(100, (earningsSol / 0.001) * 100);
 
   return (
@@ -132,7 +161,7 @@ export default function StatsPanel() {
       <div className="stat-card">
         <div className="stat-label">Earnings (SOL)</div>
         <div className="stat-value" style={{ fontSize: 15 }}>
-          {formatEarnings(earningsSol)}
+          {formatEarnings(animatedEarningsSol)}
         </div>
         <div className="stat-sub">
           {stats ? stats.earnings_lamports.toLocaleString() : '0'} lamports

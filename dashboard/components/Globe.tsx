@@ -268,7 +268,7 @@ export default function Globe() {
         enableZoom={true}
         minDistance={1.8}
         maxDistance={5}
-        autoRotate={false}
+        autoRotate={true}
         enableDamping
         dampingFactor={0.05}
       />
