@@ -110,6 +110,11 @@ export type SnsProgram = {
           "signer": true
         },
         {
+          "name": "adminSigner",
+          "writable": true,
+          "signer": true
+        },
+        {
           "name": "nodeAccount",
           "writable": true,
           "pda": {
@@ -229,24 +234,7 @@ export type SnsProgram = {
         },
         {
           "name": "programAuthority",
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  97,
-                  117,
-                  116,
-                  104,
-                  111,
-                  114,
-                  105,
-                  116,
-                  121
-                ]
-              }
-            ]
-          }
+          "writable": true
         },
         {
           "name": "nodeAccount",

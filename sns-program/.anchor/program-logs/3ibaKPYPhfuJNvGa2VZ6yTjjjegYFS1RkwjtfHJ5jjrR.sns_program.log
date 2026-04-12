@@ -1,0 +1,49 @@
+Streaming transaction logs mentioning 3ibaKPYPhfuJNvGa2VZ6yTjjjegYFS1RkwjtfHJ5jjrR. Confirmed commitment
+Transaction executed in slot 3:
+  Signature: 3mYXWtn1rGYtCkj8wbTEYiaCdMT2qerSQ9EZjwZn98MBi3tNF9fZo3Su7Cj4khqr5rytVjT8uvZmCRq99Cz5SYU4
+  Status: Ok
+  Log Messages:
+    Program 3ibaKPYPhfuJNvGa2VZ6yTjjjegYFS1RkwjtfHJ5jjrR invoke [1]
+    Program log: Instruction: RegisterNode
+    Program 11111111111111111111111111111111 invoke [2]
+    Program 11111111111111111111111111111111 success
+    Program 11111111111111111111111111111111 invoke [2]
+    Program 11111111111111111111111111111111 success
+    Program data: Dzm3O103ncPD3DNiR7VDe6P7KQSOnIbM+fMWtBIvEd4Gi/gxyynv/hUAAABodHRwOi8vbG9jYWxob3N0OjkwMDAAwusLAAAAACGM1WkAAAAA
+    Program 3ibaKPYPhfuJNvGa2VZ6yTjjjegYFS1RkwjtfHJ5jjrR consumed 12378 of 200000 compute units
+    Program 3ibaKPYPhfuJNvGa2VZ6yTjjjegYFS1RkwjtfHJ5jjrR success
+Transaction executed in slot 3:
+  Signature: 3T4cq2PyoixJ19BWFF3njspASoCcL26o3NGqA3sWdGWEEMnXuDN4UcMkBR6hpeddcMbZsxDNxN346XegFEkuM1Lu
+  Status: Ok
+  Log Messages:
+    Program 3ibaKPYPhfuJNvGa2VZ6yTjjjegYFS1RkwjtfHJ5jjrR invoke [1]
+    Program log: Instruction: SettlePayments
+    Program 11111111111111111111111111111111 invoke [2]
+    Program 11111111111111111111111111111111 success
+    Program 11111111111111111111111111111111 invoke [2]
+    Program 11111111111111111111111111111111 success
+    Program data: nraYTGkX6IfD3DNiR7VDe6P7KQSOnIbM+fMWtBIvEd4Gi/gxyynv/qCGAQAAAAAAAgAAAAAAAAAhjNVpAAAAAA==
+    Program 3ibaKPYPhfuJNvGa2VZ6yTjjjegYFS1RkwjtfHJ5jjrR consumed 14931 of 200000 compute units
+    Program 3ibaKPYPhfuJNvGa2VZ6yTjjjegYFS1RkwjtfHJ5jjrR success
+Transaction executed in slot 4:
+  Signature: 3T4cq2PyoixJ19BWFF3njspASoCcL26o3NGqA3sWdGWEEMnXuDN4UcMkBR6hpeddcMbZsxDNxN346XegFEkuM1Lu
+  Status: Ok
+  Log Messages:
+    Program 3ibaKPYPhfuJNvGa2VZ6yTjjjegYFS1RkwjtfHJ5jjrR invoke [1]
+    Program log: Instruction: SettlePayments
+    Program 11111111111111111111111111111111 invoke [2]
+    Program 11111111111111111111111111111111 success
+    Program 11111111111111111111111111111111 invoke [2]
+    Program 11111111111111111111111111111111 success
+    Program data: nraYTGkX6IfD3DNiR7VDe6P7KQSOnIbM+fMWtBIvEd4Gi/gxyynv/qCGAQAAAAAAAgAAAAAAAAAhjNVpAAAAAA==
+    Program 3ibaKPYPhfuJNvGa2VZ6yTjjjegYFS1RkwjtfHJ5jjrR consumed 14931 of 200000 compute units
+    Program 3ibaKPYPhfuJNvGa2VZ6yTjjjegYFS1RkwjtfHJ5jjrR success
+Transaction executed in slot 4:
+  Signature: 26HQp6pBDCVReksnaK9kAGzRrCXwth7KftX5NRoE9QneYhfDFnYTSHiVFtGWx9ehrhRWLFwo9QxmGcT7dBNXSdM5
+  Status: Error processing Instruction 0: custom program error: 0x1773
+  Log Messages:
+    Program 3ibaKPYPhfuJNvGa2VZ6yTjjjegYFS1RkwjtfHJ5jjrR invoke [1]
+    Program log: Instruction: SlashNode
+    Program log: AnchorError thrown in programs/sns-program/src/lib.rs:141. Error Code: Unauthorized. Error Number: 6003. Error Message: Caller is not authorized.
+    Program 3ibaKPYPhfuJNvGa2VZ6yTjjjegYFS1RkwjtfHJ5jjrR consumed 9270 of 200000 compute units
+    Program 3ibaKPYPhfuJNvGa2VZ6yTjjjegYFS1RkwjtfHJ5jjrR failed: custom program error: 0x1773

@@ -1,0 +1,17 @@
+# Secrets — NEVER commit these
+.env
+.env.local
+*.key
+keypair.json
+*_secret*
+*_keypair*
+
+# Solana keypair files
+id.json
+
+# Build output
+target/
+
+# Backup files
+earnings_backup.json
+*.bak

@@ -83,7 +83,7 @@ export default function Home() {
           </div>
 
           {/* Corner decorations */}
-          <div style={{ position: 'absolute', top: 16, left: 16, pointerEvents: 'none' }}>
+          <div className="corner-decoration corner-tl">
             <div
               style={{
                 fontSize: 9,
@@ -97,15 +97,7 @@ export default function Home() {
               <div>◈ DHT SYNC</div>
             </div>
           </div>
-          <div
-            style={{
-              position: 'absolute',
-              top: 16,
-              right: 16,
-              pointerEvents: 'none',
-              textAlign: 'right',
-            }}
-          >
+          <div className="corner-decoration corner-tr">
             <div
               style={{
                 fontSize: 9,

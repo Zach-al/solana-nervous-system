@@ -1,0 +1,1 @@
+{"rustc":17242236030263756182,"features":"","declared_features":"","target":0,"profile":0,"path":0,"deps":[[1129825634189702989,"build_script_build",false,1954916944391118658]],"local":[{"RerunIfChanged":{"output":"debug/build/sns-daemon-23e325af180d8bdc/output","paths":[".git/HEAD",".git/refs/heads"]}}],"rustflags":[],"config":0,"compile_kind":0}

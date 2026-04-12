@@ -104,6 +104,11 @@
           "signer": true
         },
         {
+          "name": "admin_signer",
+          "writable": true,
+          "signer": true
+        },
+        {
           "name": "node_account",
           "writable": true,
           "pda": {
@@ -223,24 +228,7 @@
         },
         {
           "name": "program_authority",
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  97,
-                  117,
-                  116,
-                  104,
-                  111,
-                  114,
-                  105,
-                  116,
-                  121
-                ]
-              }
-            ]
-          }
+          "writable": true
         },
         {
           "name": "node_account",

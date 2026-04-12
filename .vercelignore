@@ -1,0 +1,5 @@
+.git
+.anchor
+sns-program/target
+sns-daemon/target
+node_modules

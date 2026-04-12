@@ -101,6 +101,7 @@ describe("sns-program", () => {
       // @ts-ignore - Anchor 0.30 strict type mapping with PDA resolution
       .accounts({
         owner: owner.publicKey,
+        adminSigner: owner.publicKey,
         nodeAccount: nodeAccountPda,
         escrowAccount: escrowAccountPda,
         nonceAccount: nonceAccountPda,

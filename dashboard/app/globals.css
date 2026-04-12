@@ -422,3 +422,27 @@ body {
   transition: width 0.5s ease;
   box-shadow: 0 0 6px var(--green-primary);
 }
+
+/* Corner decorations - Hidden on mobile to prevent scrolling/overlap */
+.corner-decoration {
+  position: absolute;
+  pointer-events: none;
+}
+
+.corner-tl {
+  top: 16px;
+  left: 16px;
+}
+
+.corner-tr {
+  top: 16px;
+  right: 16px;
+  text-align: right;
+}
+
+@media (max-width: 768px) {
+  .corner-decoration {
+    display: none;
+  }
+}
+
