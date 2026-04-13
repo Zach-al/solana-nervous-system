@@ -1,6 +1,6 @@
 use dashmap::DashMap;
 use hmac::{Hmac, Mac};
-use secrecy::{ExposeSecret, Secret};
+
 use sha2::Sha256;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -14,20 +14,20 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 #[allow(dead_code)]
 pub struct RequestSigner {
-    secret_key: Secret<String>,
+    secret_key: String,
 }
 
 #[allow(dead_code)]
 impl RequestSigner {
     pub fn new(secret: String) -> Self {
         Self {
-            secret_key: Secret::new(secret),
+            secret_key: secret,
         }
     }
 
     pub fn sign(&self, payload: &str, timestamp: u64) -> String {
         let mut mac = Hmac::<Sha256>::new_from_slice(
-            self.secret_key.expose_secret().as_bytes(),
+            self.secret_key.as_bytes(),
         )
         .expect("HMAC can take key of any size");
         mac.update(format!("{}{}", payload, timestamp).as_bytes());

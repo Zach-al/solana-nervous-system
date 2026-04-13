@@ -8,3 +8,6 @@ target
 out
 .env
 *.log
+.anchor
+sns-program
+dashboard

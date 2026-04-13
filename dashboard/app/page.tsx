@@ -1,8 +1,7 @@
-'use client';
-
 import dynamic from 'next/dynamic';
 import StatsPanel from '../components/StatsPanel';
 import ActivityFeed from '../components/ActivityFeed';
+import BatchHistory from '../components/BatchHistory';
 
 // Load Globe dynamically to avoid SSR issues with Three.js
 const Globe = dynamic(() => import('../components/Globe'), {
@@ -39,7 +38,7 @@ export default function Home() {
         <div className="header-meta">
           <span>DEVNET</span>
           <span className="header-badge">▶ LIVE</span>
-          <span>v0.1.0</span>
+          <span>v0.3.0</span>
           <span
             style={{
               width: 8,
@@ -59,12 +58,14 @@ export default function Home() {
         <StatsPanel />
         <div className="globe-container">
           <Globe />
+          
+          <BatchHistory />
 
           {/* Overlay labels on globe */}
           <div
             style={{
               position: 'absolute',
-              bottom: 20,
+              bottom: 200,
               left: '50%',
               transform: 'translateX(-50%)',
               textAlign: 'center',
@@ -94,7 +95,7 @@ export default function Home() {
             >
               <div>◉ NODE ACTIVE</div>
               <div>⬡ MESH ONLINE</div>
-              <div>◈ DHT SYNC</div>
+              <div>◈ ZK BATCHING</div>
             </div>
           </div>
           <div className="corner-decoration corner-tr">
@@ -108,7 +109,7 @@ export default function Home() {
             >
               <div>12 CITIES</div>
               <div>2,341 NODES</div>
-              <div>P2P MESH</div>
+              <div>ZK AGGREGATION</div>
             </div>
           </div>
         </div>
@@ -117,3 +118,4 @@ export default function Home() {
     </main>
   );
 }
+

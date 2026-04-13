@@ -92,25 +92,20 @@ export type SnsProgram = {
       ]
     },
     {
-      "name": "settlePayments",
+      "name": "settleCompressedBatch",
       "discriminator": [
-        228,
-        137,
         157,
-        218,
-        144,
-        171,
-        119,
-        92
+        20,
+        177,
+        62,
+        97,
+        100,
+        180,
+        0
       ],
       "accounts": [
         {
           "name": "owner",
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "adminSigner",
           "writable": true,
           "signer": true
         },
@@ -159,27 +154,23 @@ export type SnsProgram = {
           }
         },
         {
-          "name": "nonceAccount",
+          "name": "batchRecord",
           "writable": true,
           "pda": {
             "seeds": [
               {
                 "kind": "const",
                 "value": [
-                  110,
-                  111,
-                  110,
+                  98,
+                  97,
+                  116,
                   99,
-                  101
+                  104
                 ]
               },
               {
-                "kind": "account",
-                "path": "owner"
-              },
-              {
                 "kind": "arg",
-                "path": "instructionNonce"
+                "path": "batchIdBytes"
               }
             ]
           }
@@ -191,22 +182,30 @@ export type SnsProgram = {
       ],
       "args": [
         {
-          "name": "receipts",
+          "name": "merkleRoot",
           "type": {
-            "vec": {
-              "defined": {
-                "name": "paymentReceipt"
-              }
-            }
+            "array": [
+              "u8",
+              32
+            ]
           }
         },
         {
-          "name": "instructionTimestamp",
-          "type": "i64"
+          "name": "totalLamports",
+          "type": "u64"
         },
         {
-          "name": "instructionNonce",
+          "name": "receiptCount",
           "type": "u64"
+        },
+        {
+          "name": "batchIdBytes",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
         }
       ]
     },
@@ -295,6 +294,19 @@ export type SnsProgram = {
   ],
   "accounts": [
     {
+      "name": "batchRecord",
+      "discriminator": [
+        237,
+        157,
+        151,
+        81,
+        127,
+        59,
+        13,
+        242
+      ]
+    },
+    {
       "name": "nodeAccount",
       "discriminator": [
         125,
@@ -306,22 +318,22 @@ export type SnsProgram = {
         86,
         220
       ]
-    },
-    {
-      "name": "nonceAccount",
-      "discriminator": [
-        110,
-        202,
-        133,
-        201,
-        147,
-        206,
-        238,
-        84
-      ]
     }
   ],
   "events": [
+    {
+      "name": "batchSettled",
+      "discriminator": [
+        238,
+        14,
+        187,
+        192,
+        127,
+        95,
+        104,
+        9
+      ]
+    },
     {
       "name": "nodeRegistered",
       "discriminator": [
@@ -346,19 +358,6 @@ export type SnsProgram = {
         73,
         177,
         87
-      ]
-    },
-    {
-      "name": "paymentSettled",
-      "discriminator": [
-        158,
-        182,
-        152,
-        76,
-        105,
-        23,
-        232,
-        135
       ]
     }
   ],
@@ -440,6 +439,68 @@ export type SnsProgram = {
     }
   ],
   "types": [
+    {
+      "name": "batchRecord",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "node",
+            "type": "pubkey"
+          },
+          {
+            "name": "merkleRoot",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "totalLamports",
+            "type": "u64"
+          },
+          {
+            "name": "receiptCount",
+            "type": "u64"
+          },
+          {
+            "name": "settledAt",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "batchSettled",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "node",
+            "type": "pubkey"
+          },
+          {
+            "name": "merkleRoot",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "totalLamports",
+            "type": "u64"
+          },
+          {
+            "name": "receiptCount",
+            "type": "u64"
+          }
+        ]
+      }
+    },
     {
       "name": "nodeAccount",
       "type": {
@@ -528,70 +589,6 @@ export type SnsProgram = {
           {
             "name": "newReputation",
             "type": "u8"
-          },
-          {
-            "name": "timestamp",
-            "type": "i64"
-          }
-        ]
-      }
-    },
-    {
-      "name": "nonceAccount",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "isUsed",
-            "type": "bool"
-          },
-          {
-            "name": "nonceValue",
-            "type": "u64"
-          }
-        ]
-      }
-    },
-    {
-      "name": "paymentReceipt",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "client",
-            "type": "pubkey"
-          },
-          {
-            "name": "amountLamports",
-            "type": "u64"
-          },
-          {
-            "name": "nonce",
-            "type": "u64"
-          },
-          {
-            "name": "timestamp",
-            "type": "i64"
-          }
-        ]
-      }
-    },
-    {
-      "name": "paymentSettled",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "owner",
-            "type": "pubkey"
-          },
-          {
-            "name": "totalLamports",
-            "type": "u64"
-          },
-          {
-            "name": "receiptCount",
-            "type": "u64"
           },
           {
             "name": "timestamp",

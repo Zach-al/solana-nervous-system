@@ -1,5 +1,6 @@
 use anchor_lang::prelude::*;
 use anchor_lang::system_program;
+use anchor_spl::token::{self, Mint, Token, TokenAccount, MintTo};
 
 declare_id!("3ibaKPYPhfuJNvGa2VZ6yTjjjegYFS1RkwjtfHJ5jjrR");
 
@@ -47,72 +48,22 @@ pub mod sns_program {
         Ok(())
     }
 
-    pub fn settle_payments(
-        ctx: Context<SettlePayments>,
-        receipts: Vec<PaymentReceipt>,
-        instruction_timestamp: i64,
-        instruction_nonce: u64,
+    pub fn settle_compressed_batch(
+        ctx: Context<SettleCompressedBatch>,
+        merkle_root: [u8; 32],
+        total_lamports: u64,
+        receipt_count: u64,
+        _batch_id_bytes: [u8; 32],
     ) -> Result<()> {
         let node = &mut ctx.accounts.node_account;
-
-        // ACCOUNT VALIDATION (owner and frozen checks handled by Anchor types and constraints)
-        require!(node.is_initialized, SnsError::NodeNotFound);
-        require!(node.owner == ctx.accounts.owner.key(), SnsError::Unauthorized);
-
-        // REQUIRE ADMIN CO-SIGNER to prevent node owners from forging arbitrary receipts
-        // In production, this should be an ed25519 signature verification on the receipts instead.
-        require!(
-            ctx.accounts.admin_signer.key() == pubkey!("Admins1111111111111111111111111111111111111") || 
-            ctx.accounts.admin_signer.key() == ctx.accounts.owner.key(), // For test accommodation
-            SnsError::Unauthorized
-        );
-
-        // REENTRANCY PROTECTION
-        require!(!node.locked, SnsError::Reentrancy);
-        node.locked = true;
-
-        // VERIFY NODE REPUTATION
+        
+        // Verify node is active
         require!(node.reputation > 0, SnsError::NodeSlashed);
-
-        // INSTRUCTION REPLAY PROTECTION
-        let clock = Clock::get()?;
-        require!(
-            clock.unix_timestamp.saturating_sub(instruction_timestamp) <= 60,
-            SnsError::TimestampExpired
-        );
-
-        // INSTRUCTION NONCE UNIQUENESS
-        let nonce_acc = &mut ctx.accounts.nonce_account;
-        require!(!nonce_acc.is_used, SnsError::NonceAlreadyUsed);
-        nonce_acc.is_used = true;
-        nonce_acc.nonce_value = instruction_nonce;
-
-        // PAYMENT VALIDATION
-        require!(!receipts.is_empty(), SnsError::InvalidReceipt);
         
-        let mut total_payment: u64 = 0;
-        let mut max_receipt_nonce = node.last_receipt_nonce;
-
-        for receipt in receipts.iter() {
-            require!(receipt.amount_lamports > 0, SnsError::InvalidReceipt);
-            require!(
-                clock.unix_timestamp.saturating_sub(receipt.timestamp) <= 3600,
-                SnsError::TimestampExpired
-            );
-            // Verify receipt nonce is strictly increasing (not previously used)
-            require!(receipt.nonce > max_receipt_nonce, SnsError::NonceAlreadyUsed);
-            max_receipt_nonce = receipt.nonce;
-
-            total_payment = total_payment.checked_add(receipt.amount_lamports).ok_or(SnsError::Overflow)?;
-        }
-        
-        // Update the highest seen nonce to prevent reuse
-        node.last_receipt_nonce = max_receipt_nonce;
-
-        // VERIFY ESCROW BALANCE
+        // 1. SOL PAYMENT
         let escrow_balance = ctx.accounts.escrow_account.lamports();
-        require!(total_payment <= escrow_balance, SnsError::InsufficientEscrow);
-
+        require!(total_lamports <= escrow_balance, SnsError::InsufficientEscrow);
+        
         let owner_key = ctx.accounts.owner.key();
         let bump = ctx.bumps.escrow_account;
         let seeds: &[&[u8]] = &[b"escrow", owner_key.as_ref(), &[bump]];
@@ -126,23 +77,92 @@ pub mod sns_program {
                 },
                 &[seeds],
             ),
-            total_payment,
+            total_lamports,
         )?;
 
-        // CHECKED MATH FOR REQUESTS SERVED
-        node.requests_served = node.requests_served.checked_add(receipts.len() as u64).ok_or(SnsError::Overflow)?;
+        // 2. SOLNET TOKEN REWARDS (V1.0)
+        // V1.0: Flat reward of 10 SOLNET per request
+        // Future: implement halving every 100M requests
+        let reward_amount = receipt_count
+            .checked_mul(10 * 10u64.pow(9)) // 10 tokens (9 decimals)
+            .ok_or(SnsError::Overflow)?;
 
-        // TURN OFF LOCK
-        node.locked = false;
+        let auth_bump = ctx.accounts.program_state.mint_authority_bump;
+        let auth_seeds: &[&[u8]] = &[b"solnet-mint-authority", &[auth_bump]];
 
-        emit!(PaymentSettled {
-            owner: ctx.accounts.owner.key(),
-            total_lamports: total_payment,
-            receipt_count: receipts.len() as u64,
-            timestamp: clock.unix_timestamp,
+        token::mint_to(
+            CpiContext::new_with_signer(
+                ctx.accounts.token_program.to_account_info(),
+                MintTo {
+                    mint: ctx.accounts.solnet_mint.to_account_info(),
+                    to: ctx.accounts.node_token_account.to_account_info(),
+                    authority: ctx.accounts.mint_authority.to_account_info(),
+                },
+                &[auth_seeds],
+            ),
+            reward_amount,
+        )?;
+
+        // 3. STATS & RECORDING
+        let batch_record = &mut ctx.accounts.batch_record;
+        batch_record.node = node.key();
+        batch_record.merkle_root = merkle_root;
+        batch_record.total_lamports = total_lamports;
+        batch_record.receipt_count = receipt_count;
+        batch_record.settled_at = Clock::get()?.unix_timestamp;
+        
+        node.requests_served = node.requests_served
+            .checked_add(receipt_count)
+            .ok_or(SnsError::Overflow)?;
+        
+        emit!(BatchSettled {
+            node: node.key(),
+            merkle_root,
+            total_lamports,
+            receipt_count,
+            reward_solnet: reward_amount,
         });
+        
         Ok(())
     }
+
+    pub fn initialize_protocol(
+        ctx: Context<InitializeProtocol>,
+        mint_authority_bump: u8,
+    ) -> Result<()> {
+        let state = &mut ctx.accounts.program_state;
+        state.admin = ctx.accounts.admin.key();
+        state.solnet_mint = ctx.accounts.solnet_mint.key();
+        state.mint_authority_bump = mint_authority_bump;
+        Ok(())
+    }
+
+    pub fn stake_for_priority(
+        ctx: Context<StakeForPriority>,
+        amount: u64,
+    ) -> Result<()> {
+        require!(amount >= 1000 * 10u64.pow(9), SnsError::InsufficientStake);
+        
+        let node = &mut ctx.accounts.node_account;
+        require!(node.is_initialized, SnsError::NodeNotFound);
+
+        token::transfer(
+            CpiContext::new(
+                ctx.accounts.token_program.to_account_info(),
+                token::Transfer {
+                    from: ctx.accounts.user_token_account.to_account_info(),
+                    to: ctx.accounts.stake_vault.to_account_info(),
+                    authority: ctx.accounts.user.to_account_info(),
+                },
+            ),
+            amount,
+        )?;
+
+        node.stake_amount = node.stake_amount.checked_add(amount).ok_or(SnsError::Overflow)?;
+        
+        Ok(())
+    }
+
 
     pub fn slash_node(ctx: Context<SlashNode>, reason: String) -> Result<()> {
         let node = &mut ctx.accounts.node_account;
@@ -229,13 +249,10 @@ pub struct RegisterNode<'info> {
 }
 
 #[derive(Accounts)]
-#[instruction(receipts: Vec<PaymentReceipt>, instruction_timestamp: i64, instruction_nonce: u64)]
-pub struct SettlePayments<'info> {
+#[instruction(merkle_root: [u8; 32], total_lamports: u64, receipt_count: u64, batch_id_bytes: [u8; 32])]
+pub struct SettleCompressedBatch<'info> {
     #[account(mut)]
     pub owner: Signer<'info>,
-
-    #[account(mut)]
-    pub admin_signer: Signer<'info>,
 
     #[account(
         mut,
@@ -253,17 +270,79 @@ pub struct SettlePayments<'info> {
     pub escrow_account: UncheckedAccount<'info>,
 
     #[account(
-        init_if_needed,
+        init,
         payer = owner,
-        space = NonceAccount::SPACE,
-        seeds = [b"nonce", owner.key().as_ref(), &instruction_nonce.to_le_bytes()],
+        space = BatchRecord::SPACE,
+        seeds = [b"batch", batch_id_bytes.as_ref()],
         bump,
     )]
-    pub nonce_account: Account<'info, NonceAccount>,
+    pub batch_record: Account<'info, BatchRecord>,
 
-    #[account(address = system_program::ID)]
+    // V1.0 Token Rewards
+    #[account(seeds = [b"solnet-mint-authority"], bump)]
+    /// CHECK: PDA authority for minting
+    pub mint_authority: UncheckedAccount<'info>,
+
+    #[account(mut)]
+    pub solnet_mint: Account<'info, Mint>,
+
+    #[account(
+        mut,
+        constraint = node_token_account.mint == solnet_mint.key(),
+        constraint = node_token_account.owner == owner.key(),
+    )]
+    pub node_token_account: Account<'info, TokenAccount>,
+    
+    #[account(seeds = [b"protocol-state"], bump)]
+    pub program_state: Account<'info, ProgramState>,
+
+    pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
 }
+
+#[derive(Accounts)]
+pub struct InitializeProtocol<'info> {
+    #[account(mut)]
+    pub admin: Signer<'info>,
+
+    #[account(
+        init,
+        payer = admin,
+        space = ProgramState::SPACE,
+        seeds = [b"protocol-state"],
+        bump,
+    )]
+    pub program_state: Account<'info, ProgramState>,
+
+    pub solnet_mint: Account<'info, Mint>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct StakeForPriority<'info> {
+    #[account(mut)]
+    pub user: Signer<'info>,
+
+    #[account(
+        mut,
+        seeds = [b"node", user.key().as_ref()],
+        bump,
+    )]
+    pub node_account: Account<'info, NodeAccount>,
+
+    #[account(mut)]
+    pub user_token_account: Account<'info, TokenAccount>,
+
+    #[account(
+        mut,
+        constraint = stake_vault.mint == user_token_account.mint,
+        constraint = stake_vault.owner == node_account.key(),
+    )]
+    pub stake_vault: Account<'info, TokenAccount>,
+
+    pub token_program: Program<'info, Token>,
+}
+
 
 #[derive(Accounts)]
 pub struct SlashNode<'info> {
@@ -319,27 +398,38 @@ impl NodeAccount {
 }
 
 #[account]
-#[derive(Default)]
-pub struct NonceAccount {
-    pub is_used: bool,
-    pub nonce_value: u64,
+#[derive(InitSpace)]
+pub struct BatchRecord {
+    pub node: Pubkey,
+    pub merkle_root: [u8; 32],
+    pub total_lamports: u64,
+    pub receipt_count: u64,
+    pub settled_at: i64,
 }
 
-impl NonceAccount {
-   pub const SPACE: usize = 8 + 1 + 8;
+impl BatchRecord {
+    pub const SPACE: usize = 8 + BatchRecord::INIT_SPACE;
 }
+
+#[account]
+#[derive(InitSpace)]
+pub struct ProgramState {
+    pub admin: Pubkey,
+    pub solnet_mint: Pubkey,
+    pub mint_authority_bump: u8,
+}
+
+impl ProgramState {
+    pub const SPACE: usize = 8 + ProgramState::INIT_SPACE;
+}
+
 
 // ─────────────────────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────────────────────
 
-#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
-pub struct PaymentReceipt {
-    pub client: Pubkey,
-    pub amount_lamports: u64,
-    pub nonce: u64,
-    pub timestamp: i64,
-}
+// PaymentReceipt type removed in V0.3 in favor of compressed Merkle root
+
 
 // ─────────────────────────────────────────────────────────────
 // Events
@@ -354,11 +444,12 @@ pub struct NodeRegistered {
 }
 
 #[event]
-pub struct PaymentSettled {
-    pub owner: Pubkey,
+pub struct BatchSettled {
+    pub node: Pubkey,
+    pub merkle_root: [u8; 32],
     pub total_lamports: u64,
     pub receipt_count: u64,
-    pub timestamp: i64,
+    pub reward_solnet: u64,
 }
 
 #[event]

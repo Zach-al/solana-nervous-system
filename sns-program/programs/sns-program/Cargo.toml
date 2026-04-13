@@ -1,6 +1,6 @@
 [package]
 name = "sns-program"
-version = "0.1.0"
+version = "1.0.0"
 description = "Solana Nervous System — on-chain node registry, staking, and payment settlement"
 edition = "2021"
 
@@ -18,3 +18,5 @@ default = []
 
 [dependencies]
 anchor-lang = { version = "0.31.0", features = ["init-if-needed"] }
+anchor-spl = { version = "0.31.0", features = ["token", "mint", "associated_token"] }
+

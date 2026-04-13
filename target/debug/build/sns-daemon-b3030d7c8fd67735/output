@@ -1,5 +1,5 @@
-cargo:rustc-env=BUILD_TIMESTAMP=1775894243
-cargo:rustc-env=BUILD_ID=facd6073-dad2-4cd4-9792-e3d0ba05f887
-cargo:rustc-env=GIT_HASH=7d52a92
+cargo:rustc-env=BUILD_TIMESTAMP=1776061323
+cargo:rustc-env=BUILD_ID=b1534f92-b7a1-4f8a-842b-21db6aba5f62
+cargo:rustc-env=GIT_HASH=0d853298
 cargo:rerun-if-changed=.git/HEAD
 cargo:rerun-if-changed=.git/refs/heads

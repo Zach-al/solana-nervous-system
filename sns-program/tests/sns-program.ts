@@ -4,6 +4,7 @@ import { SnsProgram } from "../target/types/sns_program";
 const IDL = require("../target/idl/sns_program.json");
 import { PublicKey, SystemProgram, LAMPORTS_PER_SOL } from "@solana/web3.js";
 import { expect } from "chai";
+import * as crypto from "crypto";
 
 describe("sns-program", () => {
   const provider = anchor.AnchorProvider.env();
@@ -70,41 +71,46 @@ describe("sns-program", () => {
     console.log("   Stake:", stakeAmount.toNumber() / LAMPORTS_PER_SOL, "SOL");
   });
 
-  it("settle_payments: transfers earned SOL to node owner", async () => {
+  it("funds escrow before settlement", async () => {
+    // Airdrop to escrow PDA directly
+    const airdropSig = await provider.connection.requestAirdrop(
+      escrowAccountPda,
+      2 * LAMPORTS_PER_SOL
+    );
+    await provider.connection.confirmTransaction(airdropSig);
+    
+    const balance = await provider.connection.getBalance(escrowAccountPda);
+    expect(balance).to.be.gte(2 * LAMPORTS_PER_SOL);
+    console.log("✅ Escrow funded:", escrowAccountPda.toString());
+  });
+
+  it("settle_compressed_batch: transfers earned SOL to node owner", async () => {
     const ownerBalanceBefore = await provider.connection.getBalance(owner.publicKey);
 
-    const receipts = [
-      {
-        client: owner.publicKey,
-        amountLamports: new anchor.BN(50_000),
-        nonce: new anchor.BN(1),
-        timestamp: new anchor.BN(Math.floor(Date.now() / 1000)),
-      },
-      {
-        client: owner.publicKey,
-        amountLamports: new anchor.BN(50_000),
-        nonce: new anchor.BN(2),
-        timestamp: new anchor.BN(Math.floor(Date.now() / 1000)),
-      },
-    ];
+    const batchId = "test-batch-001";
+    const batchIdBytes = crypto.createHash('sha256').update(batchId).digest();
+    const merkleRoot = Buffer.alloc(32, 1); // Mock root
+    const totalLamports = new anchor.BN(100_000);
+    const receiptCount = new anchor.BN(10);
 
-    const instructionTimestamp = new anchor.BN(Math.floor(Date.now() / 1000));
-    const instructionNonce = new anchor.BN(12345);
-
-    const [nonceAccountPda] = PublicKey.findProgramAddressSync(
-      [Buffer.from("nonce"), owner.publicKey.toBuffer(), Buffer.from(instructionNonce.toArray("le", 8))],
+    const [batchRecordPda] = PublicKey.findProgramAddressSync(
+      [Buffer.from("batch"), batchIdBytes],
       programId
     );
 
     await program.methods
-      .settlePayments(receipts, instructionTimestamp, instructionNonce)
-      // @ts-ignore - Anchor 0.30 strict type mapping with PDA resolution
+      .settleCompressedBatch(
+        Array.from(merkleRoot),
+        totalLamports,
+        receiptCount,
+        Array.from(batchIdBytes)
+      )
+      // @ts-ignore
       .accounts({
         owner: owner.publicKey,
-        adminSigner: owner.publicKey,
         nodeAccount: nodeAccountPda,
         escrowAccount: escrowAccountPda,
-        nonceAccount: nonceAccountPda,
+        batchRecord: batchRecordPda,
         systemProgram: SystemProgram.programId,
       } as any)
       .rpc();
@@ -112,16 +118,11 @@ describe("sns-program", () => {
     const ownerBalanceAfter = await provider.connection.getBalance(owner.publicKey);
     const nodeAccount = await program.account.nodeAccount.fetch(nodeAccountPda);
 
-    // Balance should rise by 100_000 lamports minus tx fees minus rent for nonce PDA (~1,000_000 lamports)
-    expect(ownerBalanceAfter).to.be.gt(ownerBalanceBefore - 2_000_000);
-    expect((nodeAccount as any).requestsServed.toNumber()).to.equal(2);
+    expect(ownerBalanceAfter).to.be.gt(ownerBalanceBefore);
+    expect((nodeAccount as any).requestsServed.toNumber()).to.equal(10);
 
-    console.log("✅ Payment settled. Requests served:", (nodeAccount as any).requestsServed.toNumber());
-    console.log(
-      "   Balance delta:",
-      (ownerBalanceAfter - ownerBalanceBefore) / LAMPORTS_PER_SOL,
-      "SOL"
-    );
+    console.log("✅ Batch settled. Total requests served:", (nodeAccount as any).requestsServed.toNumber());
+    console.log("   Escrow balance paid:", totalLamports.toNumber(), "lamports");
   });
 
   it("slash_node: reduces reputation by 20", async () => {

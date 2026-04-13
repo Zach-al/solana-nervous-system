@@ -2,6 +2,8 @@
 
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { secureFetch } from '../lib/secure-fetch';
+import EarningsPanel from './EarningsPanel';
+import PrivacyPanel from './PrivacyPanel';
 
 interface NodeStats {
   node_id: string;
@@ -21,9 +23,8 @@ function formatUptime(seconds: number): string {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
-function formatEarnings(sol: number): string {
-  return sol.toFixed(8);
-}
+// formatEarnings utility removed in favor of EarningsPanel
+
 
 function useAnimatedValue(value: number, duration: number = 1000): number {
   const [current, setCurrent] = useState(value);
@@ -157,22 +158,13 @@ export default function StatsPanel() {
         sub="total proxied RPC calls"
       />
 
-      {/* Earnings */}
-      <div className="stat-card">
-        <div className="stat-label">Earnings (SOL)</div>
-        <div className="stat-value" style={{ fontSize: 15 }}>
-          {formatEarnings(animatedEarningsSol)}
-        </div>
-        <div className="stat-sub">
-          {stats ? stats.earnings_lamports.toLocaleString() : '0'} lamports
-        </div>
-        <div className="earnings-bar">
-          <div
-            className="earnings-bar-fill"
-            style={{ width: `${earningsBarWidth}%` }}
-          />
-        </div>
-      </div>
+      {/* Earnings Panel [V0.3] */}
+      <EarningsPanel />
+
+      {/* Privacy Shield [V0.4] */}
+      <PrivacyPanel />
+
+
 
       {/* Uptime */}
       <StatCard

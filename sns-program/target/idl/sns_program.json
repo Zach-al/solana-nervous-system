@@ -86,25 +86,20 @@
       ]
     },
     {
-      "name": "settle_payments",
+      "name": "settle_compressed_batch",
       "discriminator": [
-        228,
-        137,
         157,
-        218,
-        144,
-        171,
-        119,
-        92
+        20,
+        177,
+        62,
+        97,
+        100,
+        180,
+        0
       ],
       "accounts": [
         {
           "name": "owner",
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "admin_signer",
           "writable": true,
           "signer": true
         },
@@ -153,27 +148,23 @@
           }
         },
         {
-          "name": "nonce_account",
+          "name": "batch_record",
           "writable": true,
           "pda": {
             "seeds": [
               {
                 "kind": "const",
                 "value": [
-                  110,
-                  111,
-                  110,
+                  98,
+                  97,
+                  116,
                   99,
-                  101
+                  104
                 ]
               },
               {
-                "kind": "account",
-                "path": "owner"
-              },
-              {
                 "kind": "arg",
-                "path": "instruction_nonce"
+                "path": "batch_id_bytes"
               }
             ]
           }
@@ -185,22 +176,30 @@
       ],
       "args": [
         {
-          "name": "receipts",
+          "name": "merkle_root",
           "type": {
-            "vec": {
-              "defined": {
-                "name": "PaymentReceipt"
-              }
-            }
+            "array": [
+              "u8",
+              32
+            ]
           }
         },
         {
-          "name": "instruction_timestamp",
-          "type": "i64"
+          "name": "total_lamports",
+          "type": "u64"
         },
         {
-          "name": "instruction_nonce",
+          "name": "receipt_count",
           "type": "u64"
+        },
+        {
+          "name": "batch_id_bytes",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
         }
       ]
     },
@@ -289,6 +288,19 @@
   ],
   "accounts": [
     {
+      "name": "BatchRecord",
+      "discriminator": [
+        237,
+        157,
+        151,
+        81,
+        127,
+        59,
+        13,
+        242
+      ]
+    },
+    {
       "name": "NodeAccount",
       "discriminator": [
         125,
@@ -300,22 +312,22 @@
         86,
         220
       ]
-    },
-    {
-      "name": "NonceAccount",
-      "discriminator": [
-        110,
-        202,
-        133,
-        201,
-        147,
-        206,
-        238,
-        84
-      ]
     }
   ],
   "events": [
+    {
+      "name": "BatchSettled",
+      "discriminator": [
+        238,
+        14,
+        187,
+        192,
+        127,
+        95,
+        104,
+        9
+      ]
+    },
     {
       "name": "NodeRegistered",
       "discriminator": [
@@ -340,19 +352,6 @@
         73,
         177,
         87
-      ]
-    },
-    {
-      "name": "PaymentSettled",
-      "discriminator": [
-        158,
-        182,
-        152,
-        76,
-        105,
-        23,
-        232,
-        135
       ]
     }
   ],
@@ -434,6 +433,68 @@
     }
   ],
   "types": [
+    {
+      "name": "BatchRecord",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "node",
+            "type": "pubkey"
+          },
+          {
+            "name": "merkle_root",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "total_lamports",
+            "type": "u64"
+          },
+          {
+            "name": "receipt_count",
+            "type": "u64"
+          },
+          {
+            "name": "settled_at",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "BatchSettled",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "node",
+            "type": "pubkey"
+          },
+          {
+            "name": "merkle_root",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "total_lamports",
+            "type": "u64"
+          },
+          {
+            "name": "receipt_count",
+            "type": "u64"
+          }
+        ]
+      }
+    },
     {
       "name": "NodeAccount",
       "type": {
@@ -522,70 +583,6 @@
           {
             "name": "new_reputation",
             "type": "u8"
-          },
-          {
-            "name": "timestamp",
-            "type": "i64"
-          }
-        ]
-      }
-    },
-    {
-      "name": "NonceAccount",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "is_used",
-            "type": "bool"
-          },
-          {
-            "name": "nonce_value",
-            "type": "u64"
-          }
-        ]
-      }
-    },
-    {
-      "name": "PaymentReceipt",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "client",
-            "type": "pubkey"
-          },
-          {
-            "name": "amount_lamports",
-            "type": "u64"
-          },
-          {
-            "name": "nonce",
-            "type": "u64"
-          },
-          {
-            "name": "timestamp",
-            "type": "i64"
-          }
-        ]
-      }
-    },
-    {
-      "name": "PaymentSettled",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "owner",
-            "type": "pubkey"
-          },
-          {
-            "name": "total_lamports",
-            "type": "u64"
-          },
-          {
-            "name": "receipt_count",
-            "type": "u64"
           },
           {
             "name": "timestamp",

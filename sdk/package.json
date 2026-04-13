@@ -1,0 +1,50 @@
+{
+  "name": "solnet-sdk",
+  "version": "1.0.0",
+  "description": "Decentralized RPC for Solana. Drop-in replacement for @solana/web3.js Connection. One line change. 30% cheaper. Zero downtime.",
+  "main": "dist/index.js",
+  "module": "dist/index.esm.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "jest --passWithNoTests",
+    "prepublishOnly": "npm run build && npm test"
+  },
+  "keywords": [
+    "solana",
+    "rpc",
+    "web3",
+    "decentralized",
+    "solnet",
+    "depin",
+    "blockchain",
+    "infrastructure",
+    "mesh",
+    "p2p"
+  ],
+  "author": "Bhupen Nayak",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Zach-al/solana-nervous-system"
+  },
+  "homepage": "https://github.com/Zach-al/solana-nervous-system#readme",
+  "bugs": {
+    "url": "https://github.com/Zach-al/solana-nervous-system/issues"
+  },
+  "peerDependencies": {
+    "@solana/web3.js": "^1.87.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "@types/node": "^20.0.0",
+    "jest": "^29.0.0",
+    "ts-jest": "^29.0.0",
+    "@types/jest": "^29.0.0"
+  }
+}

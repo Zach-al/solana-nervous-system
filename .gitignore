@@ -1,5 +1,11 @@
-.vercel
-.env*.local
 target/
-node_modules/
 .next/
+node_modules/
+dist/
+.env
+.env.local
+.env.production
+*.key
+keypair.json
+batches/
+earnings_backup.json

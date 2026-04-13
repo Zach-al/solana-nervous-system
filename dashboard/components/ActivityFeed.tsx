@@ -8,6 +8,8 @@ interface ActivityEntry {
   method: string;
   latencyMs: number;
   success: boolean;
+  isOnion?: boolean; // New for V0.4
+  clientIp?: string; // New for V0.4
 }
 
 const FAKE_METHODS = [
@@ -66,6 +68,8 @@ export default function ActivityFeed() {
         method: randomMethod(),
         latencyMs: randomLatency(),
         success: Math.random() > 0.05,
+        isOnion: Math.random() > 0.7,
+        clientIp: Math.random() > 0.7 ? 'anon' : `192.168.1.${Math.floor(Math.random()*255)}`,
       });
     }
 
@@ -76,6 +80,8 @@ export default function ActivityFeed() {
         method: randomMethod(),
         latencyMs: randomLatency(),
         success: Math.random() > 0.05,
+        isOnion: Math.random() > 0.7,
+        clientIp: Math.random() > 0.7 ? 'anon' : `192.168.1.${Math.floor(Math.random()*255)}`,
       });
     }, 2000);
 
@@ -104,7 +110,18 @@ export default function ActivityFeed() {
               className="activity-method"
               style={{ color: getMethodColor(entry.method) }}
             >
+              {entry.isOnion && (
+                <span 
+                  title="Origin IP cryptographically hidden via Onion Routing"
+                  style={{ marginRight: 8, fontSize: 10, cursor: 'help' }}
+                >
+                  🔒
+                </span>
+              )}
               {entry.method}
+            </span>
+            <span className="activity-latency" style={{ opacity: 0.6 }}>
+              {entry.isOnion ? 'anon' : entry.clientIp?.split('.').pop() || '.??'}
             </span>
             <span className="activity-latency">{entry.latencyMs}ms</span>
             <span

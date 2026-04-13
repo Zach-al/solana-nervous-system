@@ -8,6 +8,8 @@ use libp2p::{
     SwarmBuilder,
 };
 use tracing::{info, warn};
+use std::sync::Arc;
+use dashmap::DashMap;
 
 #[derive(NetworkBehaviour)]
 struct SnsNodeBehaviour {
@@ -20,7 +22,10 @@ pub fn get_peer_id(config: &Config) -> String {
     format!("sns-{}", config.node_name)
 }
 
-pub async fn start_p2p_node(config: Config) -> Result<()> {
+pub async fn start_p2p_node(
+    config: Config,
+    peer_registry: Arc<DashMap<String, String>>,
+) -> Result<()> {
     let mut swarm = SwarmBuilder::with_new_identity()
         .with_tokio()
         .with_tcp(
@@ -54,8 +59,16 @@ pub async fn start_p2p_node(config: Config) -> Result<()> {
             Some(SwarmEvent::NewListenAddr { address, .. }) => {
                 info!("📡 Listening on: {}", address);
             }
-            Some(SwarmEvent::ConnectionEstablished { peer_id, .. }) => {
+            Some(SwarmEvent::ConnectionEstablished { peer_id, endpoint, .. }) => {
                 info!("✅ Peer connected: {}", peer_id);
+                let addr = endpoint.get_remote_address().to_string();
+                if let Some(ip) = extract_ip_from_multiaddr(&addr) {
+                    peer_registry.insert(
+                        peer_id.to_string(),
+                        format!("http://{}:{}", ip, 9000) // Defaulting to 9000 for demo
+                    );
+                    info!("📍 Registered {} at {}", peer_id, ip);
+                }
             }
             Some(SwarmEvent::ConnectionClosed { peer_id, cause, .. }) => {
                 match cause {
@@ -79,3 +92,16 @@ pub async fn start_p2p_node(config: Config) -> Result<()> {
 
     Ok(())
 }
+
+fn extract_ip_from_multiaddr(addr: &str) -> Option<String> {
+    // Basic parser for /ip4/x.x.x.x/...
+    if addr.contains("/ip4/") {
+        let parts: Vec<&str> = addr.split("/ip4/").collect();
+        if parts.len() > 1 {
+            let ip_part = parts[1].split('/').next()?;
+            return Some(ip_part.to_string());
+        }
+    }
+    None
+}
+
