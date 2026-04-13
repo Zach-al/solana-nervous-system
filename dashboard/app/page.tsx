@@ -1,3 +1,4 @@
+'use client';
 import dynamic from 'next/dynamic';
 import StatsPanel from '../components/StatsPanel';
 import ActivityFeed from '../components/ActivityFeed';
