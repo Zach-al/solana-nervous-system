@@ -16,8 +16,7 @@ for routing blockchain traffic.
 
 ## Quick Start — Run a Node
 
-curl -fsSL https://raw.githubusercontent.com/yourusername/
-solana-nervous-system/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/Zach-al/solana-nervous-system/main/install.sh | sh
 
 ## Architecture
 
@@ -83,7 +82,7 @@ Run a node in 3 commands:
 
 ```bash
 # 1. Clone and build the daemon
-git clone https://github.com/you/solana-nervous-system
+git clone https://github.com/Zach-al/solana-nervous-system
 cd solana-nervous-system/sns-daemon && cargo build --release
 
 # 2. Start the daemon (uses devnet by default)
