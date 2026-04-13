@@ -1,94 +1,212 @@
-# SOLNET — Decentralized RPC Mesh for Solana [V1.0.0]
+<p align="center">
+  <strong>S O L N E T</strong>
+</p>
 
-> Solana is decentralized. Its infrastructure should be too.
+<p align="center">
+  <em>Decentralized RPC Infrastructure for the Solana Mainnet</em>
+</p>
 
-SOLNET replaces centralized RPC providers like Helius and QuickNode with a self-healing, privacy-first peer-to-peer mesh network. Any device can install our daemon in one command, join the mesh, and earn SOL + $SOLNET tokens automatically for routing blockchain traffic.
+<p align="center">
+  <a href="https://www.npmjs.com/package/solnet-sdk"><img src="https://img.shields.io/npm/v/solnet-sdk?color=9945ff&label=solnet-sdk&style=flat-square" /></a>
+  <a href="https://github.com/Zach-al/solana-nervous-system/actions"><img src="https://img.shields.io/badge/SLSA_Provenance-verified-brightgreen?style=flat-square" /></a>
+  <a href="https://solnet-wheat.vercel.app"><img src="https://img.shields.io/badge/Dashboard-Live-00ff88?style=flat-square" /></a>
+  <a href="https://solnet-production.up.railway.app/health"><img src="https://img.shields.io/badge/Node-Online-00ff88?style=flat-square" /></a>
+  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-white?style=flat-square" /></a>
+</p>
 
-## 🚀 V1.0 Mainnet Release
-The V1.0 release introduces the full protocol suite for production readiness:
-- **NPM SDK**: `@solnet/client` drop-in replacement for `@solana/web3.js`.
-- **$SOLNET Token**: Native utility token for node incentives and priority staking.
-- **Onion Routing**: Military-grade request privacy (AES-GCM/X25519).
-- **ZK-Compressed Settlement**: 1000x cost reduction via Merkle tree aggregation.
+---
 
-## Live Demo
-- **Landing Page**: http://localhost:3000/landing
-- **Dashboard**: http://localhost:3000/
-- **SDK**: `npm install @solnet/client`
+## The Problem
 
-## Quick Start — For Developers
+**Solana's infrastructure has a centralization crisis.**
 
-Switch from a centralized RPC to the decentralized mesh in one line:
+Every major dApp on Solana routes traffic through 2–3 centralized RPC providers. When one goes down, hundreds of protocols go dark simultaneously. This architecture creates:
+
+- **Single points of failure** — One provider outage cascades across the ecosystem
+- **Censorship vectors** — A single company can block transactions from entire regions
+- **Rent extraction** — $500+/month for premium endpoints with no competition on price
+- **Privacy violations** — Providers see every wallet address, every transaction, every query
+
+Solana itself is decentralized. **Its access layer is not.** SOLNET fixes this.
+
+---
+
+## The Solution
+
+SOLNET is a **self-healing peer-to-peer RPC mesh** that replaces centralized providers with a global network of community-operated nodes. Any device can join the mesh, route Solana traffic, and earn rewards automatically.
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  YOUR dApp                                                  │
+│  import { SolnetConnection } from 'solnet-sdk'              │
+└──────────────────────────┬──────────────────────────────────┘
+                           │  Onion-routed request
+                           ▼
+┌─────────────────────────────────────────────────────────────┐
+│  SOLNET MESH                                                │
+│                                                             │
+│  ┌──────────┐    ┌──────────┐    ┌──────────┐              │
+│  │ Entry    │───▶│ Relay    │───▶│ Exit     │              │
+│  │ Node     │    │ Node     │    │ Node     │              │
+│  │ Mumbai   │    │ Frankfurt│    │ Tokyo    │              │
+│  └──────────┘    └──────────┘    └──────────┘              │
+│       │                              │                      │
+│       │  AES-256-GCM / X25519        │  Merkle proof        │
+│       │  per-hop encryption          │  verification        │
+└───────┼──────────────────────────────┼──────────────────────┘
+        │                              │
+        ▼                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│  SOLANA VALIDATORS                                          │
+│  Mainnet / Devnet                                           │
+└─────────────────────────────────────────────────────────────┘
+        │
+        ▼  On-chain settlement
+┌─────────────────────────────────────────────────────────────┐
+│  SNS PROGRAM (Anchor)                                       │
+│  • 10 $SOLNET minted per verified request                   │
+│  • ZK-compressed batch settlement (1000x cheaper)           │
+│  • Reputation slashing for misbehavior                      │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## One-Line Integration
+
+Replace your Solana RPC connection with SOLNET. Zero code changes required.
 
 ```typescript
-import { SolnetConnection } from '@solnet/client'
+// Before — centralized, single point of failure
+import { Connection } from '@solana/web3.js'
+const connection = new Connection('https://api.mainnet-beta.solana.com')
 
-// Replace standard Connection
+// After — decentralized mesh, automatic failover, privacy routing
+import { SolnetConnection } from 'solnet-sdk'
 const connection = new SolnetConnection({
-  privacy: true // Enable entry-node privacy (Onion Routing)
+  privacy: true,        // Onion routing — hides your IP from nodes
+  fallback: 'https://api.mainnet-beta.solana.com'  // Silent failover
 })
 
-// Everything else remains the same
-const balance = await connection.getBalance(pubkey)
+// Everything works identically. Zero migration cost.
+const balance = await connection.getBalance(publicKey)
+const slot = await connection.getSlot()
+const tx = await connection.sendTransaction(transaction)
 ```
-
-## Quick Start — For Node Operators
-
-Run a node and start earning:
 
 ```bash
-# 1. Install the SOLNET Daemon
-curl -fsSL https://raw.githubusercontent.com/Zach-al/solana-nervous-system/main/install.sh | sh
-
-# 2. Register your node (requires 0.1 SOL and 1000 $SOLNET for priority)
-./target/release/sns-daemon --register
+npm install solnet-sdk
 ```
 
-## Protocol Architecture
+---
+
+## Economic Flywheel
+
+SOLNET creates a self-sustaining economy where node operators earn by serving infrastructure:
+
+| Metric | Value |
+|---|---|
+| **Reward per request** | 10 $SOLNET tokens (minted via PDA) |
+| **Settlement cost** | ~0.000005 SOL per batch (ZK-compressed) |
+| **Minimum stake** | 0.1 SOL to register a node |
+| **Priority staking** | Lock $SOLNET for increased routing priority |
+| **Slashing** | -20 reputation per infraction; ejection below 20 |
+
+**How it works:**
+1. **Register** — Stake SOL on-chain via `register_node`. A `NodeAccount` PDA is created.
+2. **Serve** — Your daemon proxies RPC requests. Each verified response earns rewards.
+3. **Settle** — Receipts are batched into Merkle trees and settled on-chain every hour.
+4. **Compound** — Stake earned $SOLNET for priority routing, earning more requests.
+
+---
+
+## Run a Node
+
+```bash
+git clone https://github.com/Zach-al/solana-nervous-system
+cd solana-nervous-system/sns-daemon
+cargo build --release
+SOLANA_RPC_URL=https://api.devnet.solana.com ./target/release/sns-daemon
+```
+
+Your node joins the global mesh immediately. Earnings begin on the first proxied request.
+
+---
+
+## Security
+
+| Layer | Implementation |
+|---|---|
+| **Transport** | AES-256-GCM + X25519 ECDH per-hop onion encryption |
+| **Verification** | Merkle proof on every RPC response — clients verify without trust |
+| **Settlement** | ZK-compressed batch receipts with on-chain replay protection |
+| **Reputation** | Stake-weighted scoring with automated slashing for misbehavior |
+| **Supply Chain** | NPM package published with **SLSA provenance** via GitHub Actions |
+| **API Security** | HMAC-SHA256 request signing, rate limiting, circuit breaker |
+
+---
+
+## Architecture
 
 ```
-Client SDK (@solnet/client)
-      │
-      ▼ (Onion Routed)
-┌───────────────────────┐
-│     SNS DAEMON        │ ──┐   Verification: Merkle Proofs
-│   (Entry Node)        │   │   Privacy: AES-256-GCM
-└───────────────────────┘   │   Transport: libp2p Kademlia
-      │                     │
-      ▼ (Relay Hop)         │
-┌───────────────────────┐   │
-│     SNS DAEMON        │ ──┤
-│    (Exit Node)        │   │
-└───────────────────────┘   │
-      │                     │
-      ▼                     │
-┌───────────────────────┐   │   Settlement:
-│   SOLANA RPC NODE     │ ──┘   10 $SOLNET / request
-└───────────────────────┘       ZK-Compressed Batches
+solana-nervous-system/
+├── sns-daemon/          Rust — RPC proxy + libp2p mesh + onion router
+├── sns-program/         Anchor — staking, settlement, $SOLNET rewards
+├── sdk/                 TypeScript — solnet-sdk (npm)
+└── dashboard/           Next.js — operator dashboard + landing page
 ```
 
-## Tech Stack
-- **Daemon**: Rust + Tokio + Axum + libp2p
-- **Cryptography**: X25519, AES-256-GCM, SHA2-256
-- **Smart Contract**: Anchor + Solana + anchor-spl
-- **Developer SDK**: TypeScript + @solana/web3.js
-- **Dashboard**: Next.js + Three.js + Tailwind CSS
+| Component | Version | Stack |
+|---|---|---|
+| `sns-daemon` | 1.0.0 | Rust, Tokio, Axum, libp2p, AES-GCM, X25519 |
+| `sns-program` | 1.0.0 | Anchor, anchor-spl, Solana |
+| `solnet-sdk` | 1.0.0 | TypeScript, @solana/web3.js |
+| `dashboard` | 1.0.0 | Next.js 16, Three.js, Tailwind CSS |
 
-## Build Status
-| Component | Status | Notes |
-|-----------|--------|-------|
-| `sns-daemon` | ✅ V1.0.0 | Onion routing + P2P mesh stable |
-| `sns-program` | ✅ V1.0.0 | SPL Token rewards active |
-| `@solnet/client` | ✅ V1.0.0 | Drop-in ready replacement |
-| `dashboard` | ✅ V1.0.0 | New premium /landing page |
+---
+
+## Live Infrastructure
+
+| Service | URL | Status |
+|---|---|---|
+| **Dashboard** | [solnet-wheat.vercel.app](https://solnet-wheat.vercel.app) | ● Live |
+| **Landing Page** | [solnet-wheat.vercel.app/landing](https://solnet-wheat.vercel.app/landing) | ● Live |
+| **RPC Endpoint** | [solnet-production.up.railway.app](https://solnet-production.up.railway.app/health) | ● Live |
+| **NPM Package** | [npmjs.com/package/solnet-sdk](https://www.npmjs.com/package/solnet-sdk) | ● Published |
+
+```bash
+# Verify the node is live
+curl https://solnet-production.up.railway.app/health
+
+# Send an RPC request through the mesh
+curl -X POST https://solnet-production.up.railway.app \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"getSlot","params":[]}'
+```
+
+---
 
 ## Roadmap
 
-### Protocols (V1.1+)
-- **Dynamic Decay**: Token reward halving every 100M requests.
-- **Multihop Networking**: Full browser-to-exit onion paths.
-- **Mobile SDK**: Native React Native / Flutter integration.
+| Phase | Description | Status |
+|---|---|---|
+| V0.1 | P2P daemon, basic RPC proxy, Anchor settlement | ✅ Complete |
+| V0.2 | Cryptographic Merkle proof response verification | ✅ Complete |
+| V0.3 | ZK-compressed batch settlement (1000x cost reduction) | ✅ Complete |
+| V0.4 | Onion routing privacy layer (AES-GCM + X25519) | ✅ Complete |
+| **V1.0** | **$SOLNET token, NPM SDK, production deployment** | **✅ Current** |
+| V1.1 | Dynamic reward decay, multi-hop onion topology | 🔜 Next |
+| V1.2 | Mobile daemon (iOS/Android via Rust cross-compilation) | 📋 Planned |
+| V2.0 | Light Protocol ZK-compression, Groth16 receipt proofs | 📋 Planned |
 
 ---
-Built with 💜 for the Solana Hackathon 2026.
-Decentralization is not a feature, it's a requirement.
+
+## License
+
+MIT — [Bhupen Nayak](https://github.com/Zach-al)
+
+---
+
+<p align="center">
+  <em>Solana is decentralized. Its infrastructure should be too.</em>
+</p>

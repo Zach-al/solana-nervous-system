@@ -3,6 +3,7 @@ import dynamic from 'next/dynamic';
 import StatsPanel from '../components/StatsPanel';
 import ActivityFeed from '../components/ActivityFeed';
 import BatchHistory from '../components/BatchHistory';
+import { useEffect, useState } from 'react';
 
 // Load Globe dynamically to avoid SSR issues with Three.js
 const Globe = dynamic(() => import('../components/Globe'), {
@@ -10,113 +11,66 @@ const Globe = dynamic(() => import('../components/Globe'), {
   loading: () => (
     <div
       style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
+        width: '100%',
         height: '100%',
-        color: 'var(--green-dim)',
-        fontSize: 12,
-        letterSpacing: '0.2em',
-        flexDirection: 'column',
-        gap: 16,
+        background: 'var(--bg-primary)',
       }}
-    >
-      <div style={{ fontSize: 32 }}>🧠</div>
-      <div>INITIALIZING MESH...</div>
-    </div>
+    />
   ),
 });
 
+function useIsMobile() {
+  const [mobile, setMobile] = useState(false);
+  useEffect(() => {
+    const check = () => setMobile(window.innerWidth < 768);
+    check();
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, []);
+  return mobile;
+}
+
 export default function Home() {
+  const isMobile = useIsMobile();
+
   return (
     <main className="dashboard-container">
+      {/* Globe as FULL background — not a widget */}
+      {!isMobile && (
+        <div className="globe-background">
+          <Globe />
+        </div>
+      )}
+
       {/* Header */}
       <header className="dashboard-header">
         <h1 className="header-logo">
-          SNS{' '}
-          <span>// SOLANA NERVOUS SYSTEM</span>
+          SOLNET{' '}
+          <span>// DECENTRALIZED RPC</span>
         </h1>
         <div className="header-meta">
           <span>DEVNET</span>
           <span className="header-badge">▶ LIVE</span>
-          <span>v0.3.0</span>
-          <span
-            style={{
-              width: 8,
-              height: 8,
-              borderRadius: '50%',
-              background: 'var(--green-primary)',
-              display: 'inline-block',
-              boxShadow: '0 0 6px var(--green-primary)',
-              animation: 'glow-pulse 2s ease-in-out infinite',
-            }}
-          />
+          <span>v1.0.0</span>
+          <span className="live-indicator" />
         </div>
       </header>
 
-      {/* Body: sidebar | globe | sidebar */}
+      {/* Body: sidebar | center | sidebar — glassmorphism panels */}
       <div className="dashboard-body">
         <StatsPanel />
-        <div className="globe-container">
-          <Globe />
-          
+        <div className="center-area">
+          {/* Mobile-only static globe replacement */}
+          {isMobile && (
+            <div className="mobile-globe-placeholder">
+              <div className="mobile-globe-text">🌐</div>
+              <div className="mobile-globe-sub">GLOBAL MESH ACTIVE</div>
+            </div>
+          )}
           <BatchHistory />
-
-          {/* Overlay labels on globe */}
-          <div
-            style={{
-              position: 'absolute',
-              bottom: 200,
-              left: '50%',
-              transform: 'translateX(-50%)',
-              textAlign: 'center',
-              pointerEvents: 'none',
-            }}
-          >
-            <div
-              style={{
-                fontSize: 10,
-                letterSpacing: '0.25em',
-                color: 'rgba(0,255,136,0.4)',
-              }}
-            >
-              DRAG TO ROTATE · SCROLL TO ZOOM
-            </div>
-          </div>
-
-          {/* Corner decorations */}
-          <div className="corner-decoration corner-tl">
-            <div
-              style={{
-                fontSize: 9,
-                letterSpacing: '0.15em',
-                color: 'rgba(0,255,136,0.3)',
-                lineHeight: 1.8,
-              }}
-            >
-              <div>◉ NODE ACTIVE</div>
-              <div>⬡ MESH ONLINE</div>
-              <div>◈ ZK BATCHING</div>
-            </div>
-          </div>
-          <div className="corner-decoration corner-tr">
-            <div
-              style={{
-                fontSize: 9,
-                letterSpacing: '0.15em',
-                color: 'rgba(153,69,255,0.5)',
-                lineHeight: 1.8,
-              }}
-            >
-              <div>12 CITIES</div>
-              <div>2,341 NODES</div>
-              <div>ZK AGGREGATION</div>
-            </div>
-          </div>
         </div>
         <ActivityFeed />
       </div>
     </main>
   );
 }
-
