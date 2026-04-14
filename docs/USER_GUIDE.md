@@ -1,64 +1,59 @@
 # SOLNET V2.0 Enterprise User Guide
 
-Welcome to SOLNET V2.0, the enterprise-grade decentralized RPC infrastructure for the Solana Mainnet. This guide covers node operation, SDK integration, and network participation.
+Welcome to SOLNET V2.1 (Enterprise) & V1.2 (Mobile), the world's first decentralized RPC infrastructure for Solana. This guide covers setup, advanced configuration, and troubleshooting.
 
-## 1. Node Operator Setup
+## 1. Quick Setup
 
-### Prerequisites
-- Rust 1.75+
-- 4 vCPUs, 8GB RAM (Minimum)
-- Stable 100Mbps+ connection
-- 0.1 SOL for staking
-
-### Installation
-Run the following command to build the daemon:
+### The Universal Installer
+The easiest way to get started on any platform:
 ```bash
-make build-release
+curl -fsSL https://raw.githubusercontent.com/Zach-al/solana-nervous-system/main/install.sh | sh
 ```
-
-### Configuration
-Configure your node using environment variables:
-- `SOLANA_RPC_URL`: Your local or trusted validator endpoint.
-- `SOLNET_SHARD`: `DeFi`, `NFT`, or `General` (Specializes your node).
-- `SOLNET_REGION`: Your geographic region (e.g., `us-east`, `europe-west`).
-- `RATE_LIMIT`: Per-minute limit for client IPs (Default: 100).
-- `MAX_CONCURRENT`: Global semaphore limit for parallel execution.
-
-### Execution
+For Raspberry Pi specific optimizations, use:
 ```bash
-cd sns-daemon && cargo run --release
+curl -fsSL https://raw.githubusercontent.com/Zach-al/solana-nervous-system/main/scripts/install-pi.sh | sh
 ```
 
-## 2. SDK Integration (@solnet/client)
+## 2. Advanced Configuration (V2.1 Enterprise)
 
-Integrate SOLNET into your dApp significantly reducing RPC costs while gaining privacy and resilience.
+Configure your node using environment variables or a `.env` file in the `sns-daemon` directory.
 
-### Installation
+### Performance Tuning
+*   **`MAX_CONCURRENT`**: Limits parallel request processing. (Recommended: CPU Cores * 100).
+*   **`LATENCY_ENGINE`**: Set to `true` (default) to enable the Helius-beating sub-10ms routing engine.
+*   **`SHARD_TYPE`**: `DeFi`, `NFT`, or `General`. Specializing increases reward multipliers for that traffic type.
+
+### Wallet & Rewards
+To earn SOLNET rewards, you must configure a node wallet:
+*   **`NODE_WALLET_PUBKEY`**: Your Solana public key.
+*   **`EARNINGS_MODE`**: `Accumulate` (hold in contract) or `AutoClaim` (settle daily).
+
+## 3. Operations & Monitoring
+
+### Local Health Check
+Verify your node is processing requests locally:
 ```bash
-npm install @solnet/client
+curl http://localhost:9000/health
 ```
 
-### Usage
-```typescript
-import { SolnetConnection } from '@solnet/client';
+### Dashboard Integration
+Your node will automatically appear on the [Live Dashboard](https://solnet-wheat.vercel.app) once it joins the P2P mesh. You can monitor:
+*   Real-time Latency (ms)
+*   Requests Served
+*   Total SOLNET Earned
+*   Battery/Efficiency status (for Mobile nodes)
 
-// The SDK automatically discovers the best peer in the mesh
-const connection = new SolnetConnection({
-  commitment: 'confirmed',
-  privacy: true // Enables 1-layer entry-node privacy
-});
+## 4. Troubleshooting
 
-const slot = await connection.getSlot();
-console.log(`Current Slot: ${slot}`);
-```
+| Issue | Cause | Solution |
+| :--- | :--- | :--- |
+| **P2P Connection Error** | Firewall blocking Port 9001 | Open TCP 9001 in your router/cloud settings. |
+| **High Latency** | Weak upstream RPC | Use a faster `SOLANA_RPC_URL` (e.g., your own node). |
+| **Zero Rewards** | Wallet not set | Ensure `NODE_WALLET_PUBKEY` is valid and saved. |
+| **Build Fails (Mobile)** | OOM (Out of Memory) | Ensure 2GB swap space is enabled on your device. |
 
-## 3. Economic Flywheel
+## 5. Security & Guidelines
 
-Node operators earn SOLNET tokens for every verified request served. 
-- **Rewards**: 10 tokens per request (initial).
-- **Decay**: Halving occurs every 100,000,000 requests globally.
-- **Settlement**: Batches are settled on-chain hourly using ZK-compressed proofs.
-
-## 4. Support
-
-For enterprise support or integration assistance, contact `enterprise@solnet.io` or join our Discord.
+*   **Do not share your private keys:** SOLNET only requires your Public Key for rewards.
+*   **Keep Up-to-Date:** Run `git pull && make build` weekly to receive security patches and performance fixes.
+*   **Join the Community:** Join our Discord for live support and network updates.
