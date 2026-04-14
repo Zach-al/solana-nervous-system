@@ -1,7 +1,6 @@
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use serde_json::json;
-use crate::rpc_proxy::security_headers;
 
 /// Real wallet reward tracker
 /// Connects to actual Solana wallet via JSON-RPC

@@ -36,6 +36,8 @@ aes-gcm = "0.10.3"
 hmac = "0.12.1"
 tower = { version = "0.4.13", features = ["util", "timeout"] }
 time = "=0.3.36"
+idna = "=0.2.3"
+url = "=2.2.2"
 
 [features]
 # Cleaned up features
