@@ -23,7 +23,6 @@ interface PerformanceData {
   target_latency_ms: {
     cached: string;
     uncached: string;
-    helius_baseline: string;
   };
 }
 
@@ -47,74 +46,69 @@ export default function PerformancePanel() {
         return () => clearInterval(interval);
     }, []);
 
-    if (!data) return <div className="p-4 text-green-500 font-mono">Loading Performance Metrics...</div>;
+    if (!data) return (
+        <div className="metric-block" style={{ height: '300px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div className="metric-label" style={{ color: 'var(--electric-purple)' }}>[LOAD_SEQUENCER_ACTIVE]</div>
+        </div>
+    );
 
     return (
-        <div className="performance-panel" style={{ 
-            background: 'rgba(0, 0, 0, 0.4)', 
-            border: '1px solid var(--green-dim)', 
-            padding: '20px', 
-            borderRadius: '8px',
-            fontFamily: 'monospace',
-            color: 'var(--green-primary)'
-        }}>
-            <div style={{ fontSize: '12px', opacity: 0.6, marginBottom: '15px', letterSpacing: '0.1em' }}>
-                // LATENCY ENGINE STATUS [V2.1]
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1px', background: 'var(--border-main)', border: '1px solid var(--border-main)' }}>
+                <div className="metric-block" style={{ background: 'var(--bg-secondary)', border: 'none' }}>
+                    <div className="metric-label">CACHED_RESPONSE</div>
+                    <div className="metric-value" style={{ color: 'var(--neon-green)' }}>{data.target_latency_ms.cached}ms</div>
+                    <div style={{ fontSize: '9px', color: 'var(--text-dim)', marginTop: '4px' }}>LATENCY_OPTIMIZED</div>
+                </div>
+                <div className="metric-block" style={{ background: 'var(--bg-secondary)', border: 'none' }}>
+                    <div className="metric-label">UNCACHED_RESPONSE</div>
+                    <div className="metric-value">{data.target_latency_ms.uncached}ms</div>
+                    <div style={{ fontSize: '9px', color: 'var(--text-dim)', marginTop: '4px' }}>VALIDATED_DIRECT</div>
+                </div>
             </div>
 
-            <div style={{ background: 'rgba(0,255,136,0.05)', padding: '15px', borderRadius: '4px', marginBottom: '20px', border: '1px solid rgba(0,255,136,0.1)' }}>
-               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
-                   <span>Cached:</span>
-                   <span style={{ color: 'var(--green-primary)' }}>{data.target_latency_ms.cached} Target ✓</span>
-               </div>
-               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
-                   <span>Uncached:</span>
-                   <span style={{ color: 'var(--green-primary)' }}>{data.target_latency_ms.uncached} Target ✓</span>
-               </div>
-               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
-                   <span>Helius Baseline:</span>
-                   <span style={{ color: 'var(--amber)' }}>{data.target_latency_ms.helius_baseline}</span>
-               </div>
-               <div style={{ marginTop: '10px', fontSize: '14px', fontWeight: 'bold', textAlign: 'center', color: 'var(--green-primary)' }}>
-                   SOLNET ADVANTAGE: 80x FASTER
-               </div>
-            </div>
-
-            <div style={{ marginBottom: '20px' }}>
-                <div style={{ fontSize: '10px', color: 'var(--green-dim)', marginBottom: '8px' }}>CACHE DISTRIBUTION</div>
-                <div style={{ display: 'flex', gap: '10px', fontSize: '11px' }}>
-                    <div style={{ flex: 1, textAlign: 'center', padding: '5px', border: '1px solid rgba(0,255,136,0.2)' }}>
-                        L1 HOT: {data.cache_sizes.l1_hot}
+            <div className="metric-block">
+                <div className="metric-label">CACHE_DISTRIBUTION_FLEET</div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', marginTop: '12px' }}>
+                    <div style={{ textAlign: 'center' }}>
+                        <div style={{ fontSize: '10px', color: 'var(--text-dim)' }}>L1_HOT</div>
+                        <div style={{ fontFamily: 'var(--font-technical)', fontSize: '16px', fontWeight: 700 }}>{data.cache_sizes.l1_hot}</div>
                     </div>
-                    <div style={{ flex: 1, textAlign: 'center', padding: '5px', border: '1px solid rgba(0,255,136,0.2)' }}>
-                        L2 WARM: {data.cache_sizes.l2_warm}
+                    <div style={{ textAlign: 'center' }}>
+                        <div style={{ fontSize: '10px', color: 'var(--text-dim)' }}>L2_WARM</div>
+                        <div style={{ fontFamily: 'var(--font-technical)', fontSize: '16px', fontWeight: 700 }}>{data.cache_sizes.l2_warm}</div>
                     </div>
-                    <div style={{ flex: 1, textAlign: 'center', padding: '5px', border: '1px solid rgba(0,255,136,0.2)' }}>
-                        L3 COLD: {data.cache_sizes.l3_cold}
+                    <div style={{ textAlign: 'center' }}>
+                        <div style={{ fontSize: '10px', color: 'var(--text-dim)' }}>L3_COLD</div>
+                        <div style={{ fontFamily: 'var(--font-technical)', fontSize: '16px', fontWeight: 700 }}>{data.cache_sizes.l3_cold}</div>
                     </div>
                 </div>
             </div>
 
-            <table style={{ width: '100%', fontSize: '11px', textAlign: 'left', borderCollapse: 'collapse' }}>
-                <thead>
-                    <tr style={{ borderBottom: '1px solid rgba(0,255,136,0.2)' }}>
-                        <th style={{ padding: '5px 0', color: 'var(--green-dim)' }}>METHOD</th>
-                        <th style={{ padding: '5px 0', color: 'var(--green-dim)' }}>REQS</th>
-                        <th style={{ padding: '5px 0', color: 'var(--green-dim)' }}>HIT%</th>
-                        <th style={{ padding: '5px 0', color: 'var(--green-dim)' }}>AVG</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {data.methods.slice(0, 5).map(m => (
-                        <tr key={m.method} style={{ borderBottom: '1px solid rgba(0,255,136,0.05)' }}>
-                            <td style={{ padding: '8px 0' }}>{m.method}</td>
-                            <td style={{ padding: '8px 0' }}>{m.total_requests}</td>
-                            <td style={{ padding: '8px 0', color: 'var(--green-primary)' }}>{m.cache_hit_rate_pct}</td>
-                            <td style={{ padding: '8px 0' }}>{m.avg_latency_ms}ms</td>
+            <div className="metric-block" style={{ padding: '0' }}>
+                <div className="panel-header" style={{ borderBottom: 'none' }}>METHOD_LATENCY_SPECTRUM</div>
+                <table className="data-table">
+                    <thead>
+                        <tr>
+                            <th>INTERFACE</th>
+                            <th>VOLUME</th>
+                            <th>EFFICIENCY</th>
+                            <th>AVG_RES</th>
                         </tr>
-                    ))}
-                </tbody>
-            </table>
+                    </thead>
+                    <tbody>
+                        {data.methods.slice(0, 6).map(m => (
+                            <tr key={m.method}>
+                                <td>{m.method}</td>
+                                <td>{m.total_requests}</td>
+                                <td style={{ color: 'var(--neon-green)' }}>{m.cache_hit_rate_pct}</td>
+                                <td style={{ color: 'var(--electric-purple)' }}>{m.avg_latency_ms}ms</td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
         </div>
     );
 }

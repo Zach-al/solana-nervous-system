@@ -1,84 +1,92 @@
 'use client';
+
 import dynamic from 'next/dynamic';
 import StatsPanel from '../components/StatsPanel';
 import PerformancePanel from '../components/PerformancePanel';
 import WalletPanel from '../components/WalletPanel';
-import ActivityFeed from '../components/ActivityFeed';
 import BatchHistory from '../components/BatchHistory';
 import MobileNodePanel from '../components/MobileNodePanel';
+import EarningsPanel from '../components/EarningsPanel';
+import ActivityFeed from '../components/ActivityFeed';
 import { useEffect, useState } from 'react';
 
 // Load Globe dynamically to avoid SSR issues with Three.js
 const Globe = dynamic(() => import('../components/Globe'), {
   ssr: false,
-  loading: () => (
-    <div
-      style={{
-        width: '100%',
-        height: '100%',
-        background: 'var(--bg-primary)',
-      }}
-    />
-  ),
+  loading: () => <div className="globe-mount" />,
 });
 
-function useIsMobile() {
-  const [mobile, setMobile] = useState(false);
-  useEffect(() => {
-    const check = () => setMobile(window.innerWidth < 768);
-    check();
-    window.addEventListener('resize', check);
-    return () => window.removeEventListener('resize', check);
-  }, []);
-  return mobile;
-}
-
 export default function Home() {
-  const isMobile = useIsMobile();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted) return null;
 
   return (
     <main className="dashboard-container">
-      {/* Globe as FULL background — not a widget */}
-      {!isMobile && (
-        <div className="globe-background">
-          <Globe />
-        </div>
-      )}
+      <div className="globe-mount">
+        <Globe />
+      </div>
 
       {/* Header */}
       <header className="dashboard-header">
-        <h1 className="header-logo">
-          SOLNET{' '}
-          <span>// DECENTRALIZED RPC</span>
-        </h1>
-        <div className="header-meta">
-          <span>DEVNET</span>
-          <span className="header-badge">▶ LIVE</span>
-          <span>v2.1.0</span>
-          <span className="live-indicator" />
+        <div style={{ display: 'flex', alignItems: 'center', gap: '40px' }}>
+          <h1 className="header-logo" style={{ fontSize: '18px', fontWeight: 900, letterSpacing: '0.15em' }}>
+            SOLNET <span style={{ color: 'var(--text-dim)', fontSize: '10px', fontWeight: 400 }}>// DECENTRALIZED INFRASTRUCTURE</span>
+          </h1>
+        </div>
+        
+        <div style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
+          <div className="status-online">
+            <span className="status-dot" />
+            LIVE NETWORKS
+          </div>
+          <div style={{ fontFamily: 'var(--font-technical)', fontSize: '11px', color: 'var(--text-dim)' }}>
+            v2.1.0-STITCH
+          </div>
         </div>
       </header>
 
-      {/* Body: sidebar | center | sidebar — glassmorphism panels */}
-      <div className="dashboard-body">
-        <div className="sidebar">
-          <WalletPanel />
-          <StatsPanel />
-          <MobileNodePanel />
-        </div>
-        <div className="center-area">
-          {/* Mobile-only static globe replacement */}
-          {isMobile && (
-            <div className="mobile-globe-placeholder">
-              <div className="mobile-globe-text">🌐</div>
-              <div className="mobile-globe-sub">GLOBAL MESH ACTIVE</div>
-            </div>
-          )}
-          <BatchHistory />
-        </div>
-        <div className="sidebar">
-          <PerformancePanel />
-        </div>
+      {/* Main Grid Architecture */}
+      <div className="dashboard-grid">
+        
+        {/* Left Column: Local Infrastructure & Health */}
+        <section className="panel-stitch">
+          <div className="panel-header">
+            INFRASTRUCTURE <span>[HEALTH]</span>
+          </div>
+          <div className="panel-content">
+            <StatsPanel />
+            <ActivityFeed />
+          </div>
+        </section>
+
+        {/* Center Column: Core Engine & Settlements */}
+        <section className="panel-stitch" style={{ flex: 1 }}>
+          <div className="panel-header">
+            CENTRAL ROUTING ENGINE <span>[ENGINE_CORE]</span>
+          </div>
+          <div className="panel-content">
+            <PerformancePanel />
+            <EarningsPanel />
+            <BatchHistory />
+          </div>
+        </section>
+
+        {/* Right Column: Fleet Management & Economy */}
+        <section className="panel-stitch">
+          <div className="panel-header">
+            FLEET & ECONOMY <span>[FLEET_COORD]</span>
+          </div>
+          <div className="panel-content">
+            <WalletPanel />
+            <MobileNodePanel />
+          </div>
+        </section>
+
       </div>
     </main>
   );

@@ -1,95 +1,49 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-
-interface WalletData {
-  wallet_address: string;
-  pending_lamports: number;
-  pending_sol: number;
-  confirmed_wallet_balance_lamports: number;
-  confirmed_wallet_balance_sol: number;
-  lifetime_earned_lamports: number;
-  lifetime_earned_sol: number;
-  session_requests: number;
-  lamports_per_request: number;
-  next_settlement_in_secs: number;
-}
+import { useState } from 'react';
 
 export default function WalletPanel() {
-    const [data, setData] = useState<WalletData | null>(null);
+  const [wallet, setWallet] = useState({
+    pubkey: '7xkx...8y9z',
+    balance: 4.52,
+    staked: 1000.00,
+    rewards_pending: 12.4,
+  });
 
-    useEffect(() => {
-        const fetchData = async () => {
-            try {
-                const res = await fetch('https://solnet-production.up.railway.app/wallet');
-                if (res.ok) {
-                    const json = await res.json();
-                    setData(json);
-                }
-            } catch (e) {
-                console.error("Failed to fetch wallet stats", e);
-            }
-        };
-        fetchData();
-        const interval = setInterval(fetchData, 10000);
-        return () => clearInterval(interval);
-    }, []);
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+      <div className="panel-header" style={{ borderBottom: 'none', padding: '0 0 8px 0' }}>
+        ECONOMIC_CONTROL <span>[WALLET_v1]</span>
+      </div>
 
-    const formatTime = (seconds: number) => {
-        const m = Math.floor(seconds / 60);
-        const s = seconds % 60;
-        return `${m}:${String(s).padStart(2, '0')}`;
-    };
-
-    if (!data) return <div className="p-4 text-green-500 font-mono">Loading Neural Rewards...</div>;
-
-    return (
-        <div className="wallet-panel" style={{ 
-            background: 'rgba(0, 0, 0, 0.4)', 
-            border: '1px solid var(--green-dim)', 
-            padding: '20px', 
-            borderRadius: '8px',
-            fontFamily: 'monospace',
-            color: 'var(--green-primary)'
-        }}>
-            <div style={{ fontSize: '12px', opacity: 0.6, marginBottom: '15px', letterSpacing: '0.1em' }}>
-                // ENTERPRISE WALLET & REWARDS [V2.1]
-            </div>
-
-            <div style={{ marginBottom: '15px' }}>
-                <div style={{ fontSize: '10px', color: 'var(--green-dim)' }}>ON-CHAIN ADDRESS</div>
-                <div style={{ wordBreak: 'break-all', fontSize: '12px', color: 'var(--amber)' }}>{data.wallet_address}</div>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '20px' }}>
-                <div>
-                    <div style={{ fontSize: '10px', color: 'var(--green-dim)' }}>CONFIRMED BALANCE</div>
-                    <div style={{ fontSize: '20px', fontWeight: 'bold' }}>{data.confirmed_wallet_balance_sol.toFixed(4)} SOL</div>
-                </div>
-                <div>
-                    <div style={{ fontSize: '10px', color: 'var(--green-dim)' }}>PENDING REWARDS</div>
-                    <div style={{ fontSize: '20px', fontWeight: 'bold', color: 'var(--green-primary)' }}>(+) {data.pending_sol.toFixed(6)} SOL</div>
-                </div>
-            </div>
-
-            <div style={{ borderTop: '1px solid rgba(0,255,136,0.1)', paddingTop: '15px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '11px' }}>
-                    <span style={{ color: 'var(--green-dim)' }}>LIFETIME EARNINGS:</span>
-                    <span>{data.lifetime_earned_sol.toFixed(4)} SOL</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '11px' }}>
-                    <span style={{ color: 'var(--green-dim)' }}>SESSION REQUESTS:</span>
-                    <span>{data.session_requests} REQS</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px' }}>
-                    <span style={{ color: 'var(--green-dim)' }}>NEXT SETTLEMENT:</span>
-                    <span style={{ color: 'var(--amber)' }}>{formatTime(data.next_settlement_in_secs)}</span>
-                </div>
-            </div>
-
-            <div style={{ marginTop: '20px', fontSize: '9px', textAlign: 'center', opacity: 0.5 }}>
-                SECURED BY ZK-RECEIPTS PORTAL
-            </div>
+      <div className="metric-block">
+        <div className="metric-label">OPERATOR_WALLET</div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+          <div style={{ fontFamily: 'var(--font-technical)', fontSize: '13px', fontWeight: 700 }}>{wallet.pubkey}</div>
+          <div style={{ fontSize: '10px', color: 'var(--neon-green)', fontWeight: 700 }}>CONNECTED</div>
         </div>
-    );
+        <div className="divider" style={{ opacity: 0.1, margin: '12px 0' }} />
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+          <div>
+            <div className="metric-label">BALANCE</div>
+            <div style={{ fontFamily: 'var(--font-technical)', fontSize: '18px', fontWeight: 700 }}>{wallet.balance} SOL</div>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <div className="metric-label">STAKED</div>
+            <div style={{ fontFamily: 'var(--font-technical)', fontSize: '18px', fontWeight: 700, color: 'var(--electric-purple)' }}>{wallet.staked} SNS</div>
+          </div>
+        </div>
+      </div>
+
+      <div className="metric-block">
+        <div className="metric-label">UNCLAIMED_REWARDS</div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div className="metric-value" style={{ color: 'var(--neon-green)' }}>{wallet.rewards_pending} SOLNET</div>
+          <button className="btn-technical" style={{ background: 'var(--electric-purple)', color: 'white', border: 'none' }}>
+            [CLAIM_ALL]
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }

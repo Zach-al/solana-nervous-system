@@ -17,13 +17,12 @@ export default function EarningsPanel() {
         pending_receipts: 42,
         last_settled_lamports: 150000,
         last_settled_receipts: 150,
-        last_settled_at: '22 mins ago',
+        last_settled_at: '22 MIN AGO',
         total_earned_sol: 0.0452,
         next_settlement_seconds: 2280,
-        merkle_root: '7f8e9a...b2c3d4'
+        merkle_root: '7F8E9A...B2C3D4'
     });
 
-    // Countdown timer
     useEffect(() => {
         const timer = setInterval(() => {
             setData(prev => ({
@@ -42,51 +41,40 @@ export default function EarningsPanel() {
     };
 
     return (
-        <div className="earnings-panel" style={{ 
-            background: 'rgba(0, 0, 0, 0.4)', 
-            border: '1px solid var(--green-dim)', 
-            padding: '20px', 
-            borderRadius: '8px',
-            fontFamily: 'monospace',
-            color: 'var(--green-primary)'
-        }}>
-            <div style={{ fontSize: '12px', opacity: 0.6, marginBottom: '15px', letterSpacing: '0.1em' }}>
-                // EARNINGS & SETTLEMENT [V0.3]
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <div className="panel-header" style={{ borderBottom: 'none', padding: '0 0 8px 0' }}>
+                SETTLEMENT_CORE <span>[ZK_V0.3]</span>
             </div>
 
-            <div className="earnings-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
-                <div className="earnings-section">
-                    <div style={{ fontSize: '10px', color: 'var(--green-dim)' }}>CURRENT BATCH</div>
-                    <div style={{ fontSize: '24px', fontWeight: 'bold' }}>{data.pending_receipts}</div>
-                    <div style={{ fontSize: '10px', opacity: 0.8 }}>RECEIPTS PENDING</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1px', background: 'var(--border-main)', border: '1px solid var(--border-main)' }}>
+                <div className="metric-block" style={{ background: 'var(--bg-secondary)', border: 'none' }}>
+                    <div className="metric-label">PENDING_BATCH</div>
+                    <div className="metric-value">{data.pending_receipts}</div>
+                    <div style={{ fontSize: '9px', color: 'var(--text-dim)', marginTop: '4px' }}>RECEIPTS_READY</div>
                 </div>
-
-                <div className="earnings-section">
-                    <div style={{ fontSize: '10px', color: 'var(--green-dim)' }}>NEXT SETTLEMENT</div>
-                    <div style={{ fontSize: '24px', fontWeight: 'bold', color: 'var(--amber)' }}>{formatTime(data.next_settlement_seconds)}</div>
-                    <div style={{ fontSize: '10px', opacity: 0.8 }}>AUTO-FLUSH</div>
+                <div className="metric-block" style={{ background: 'var(--bg-secondary)', border: 'none' }}>
+                    <div className="metric-label">NEXT_FLUSH</div>
+                    <div className="metric-value" style={{ color: 'var(--amber)' }}>{formatTime(data.next_settlement_seconds)}</div>
+                    <div style={{ fontSize: '9px', color: 'var(--text-dim)', marginTop: '4px' }}>AUTO_SETTLE_CLK</div>
                 </div>
             </div>
 
-            <div style={{ margin: '20px 0', padding: '15px 0', borderTop: '1px solid rgba(0, 255, 136, 0.1)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                    <span style={{ fontSize: '11px', color: 'var(--green-dim)' }}>TOTAL EARNED:</span>
-                    <span style={{ fontSize: '14px', fontWeight: 'bold' }}>{data.total_earned_sol.toFixed(4)} SOL</span>
+            <div className="metric-block">
+                <div className="metric-label">SETTLEMENT_INTEGRITY</div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '11px', fontFamily: 'var(--font-technical)' }}>
+                    <span style={{ color: 'var(--text-dim)' }}>TOTAL_ACCUMULATED:</span>
+                    <span style={{ fontWeight: 700 }}>{data.total_earned_sol.toFixed(4)} SOL</span>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                    <span style={{ fontSize: '11px', color: 'var(--green-dim)' }}>LAST SETTLED:</span>
-                    <span style={{ fontSize: '11px' }}>{data.last_settled_lamports.toLocaleString()} lamports</span>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '11px', fontFamily: 'var(--font-technical)' }}>
+                    <span style={{ color: 'var(--text-dim)' }}>LAST_EPOCH_SIZE:</span>
+                    <span>{data.last_settled_lamports.toLocaleString()} L</span>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ fontSize: '11px', color: 'var(--green-dim)' }}>BATCH EFFICIENCY:</span>
-                    <span style={{ fontSize: '11px', color: 'var(--green-primary)' }}>1,000x cost floor</span>
+                <div style={{ padding: '8px', background: 'rgba(255,255,255,0.02)', borderLeft: '2px solid var(--electric-purple)', marginTop: '8px' }}>
+                    <div className="metric-label" style={{ marginBottom: '4px', fontSize: '9px' }}>ACTIVE_MERKLE_ROOT</div>
+                    <div style={{ fontSize: '10px', fontFamily: 'var(--font-technical)', wordBreak: 'break-all', color: 'var(--text-dim)' }}>
+                        {data.merkle_root}
+                    </div>
                 </div>
-            </div>
-
-            <div style={{ fontSize: '10px', background: 'rgba(0,0,0,0.3)', padding: '10px', borderLeft: '2px solid var(--green-primary)' }}>
-                <div style={{ color: 'var(--green-dim)', marginBottom: '4px' }}>CURRENT MERKLE ROOT:</div>
-                <div style={{ wordBreak: 'break-all', opacity: 0.7 }}>{data.merkle_root}</div>
-                <div style={{ marginTop: '8px', color: 'var(--green-dim)' }}>SETTLEMENT COST: <span style={{ color: 'var(--green-primary)' }}>~0.000005 SOL</span></div>
             </div>
         </div>
     );
