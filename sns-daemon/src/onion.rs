@@ -4,7 +4,7 @@ use aes_gcm::{
 };
 use x25519_dalek::{EphemeralSecret, PublicKey, StaticSecret};
 use rand::rngs::OsRng;
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 
 // Onion routing: request is encrypted in layers
 // Each node peels one layer, forwards to next

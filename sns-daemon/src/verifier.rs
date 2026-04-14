@@ -1,7 +1,9 @@
 use sha2::{Sha256, Digest};
-use serde_json::Value;
+use serde::{Serialize, Deserialize};
+use serde_json::{self, Value};
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RpcProof {
     pub root_hash: String,
     pub signature: Option<String>,

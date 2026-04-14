@@ -194,10 +194,10 @@ curl -X POST https://solnet-production.up.railway.app \
 | V0.2 | Cryptographic Merkle proof response verification | ✅ Complete |
 | V0.3 | ZK-compressed batch settlement (1000x cost reduction) | ✅ Complete |
 | V0.4 | Onion routing privacy layer (AES-GCM + X25519) | ✅ Complete |
-| **V1.0** | **$SOLNET token, NPM SDK, production deployment** | **✅ Current** |
-| V1.1 | Dynamic reward decay, multi-hop onion topology | 🔜 Next |
-| V1.2 | Mobile daemon (iOS/Android via Rust cross-compilation) | 📋 Planned |
-| V2.0 | Light Protocol ZK-compression, Groth16 receipt proofs | 📋 Planned |
+| V1.0 | $SOLNET token, NPM SDK, production deployment | ✅ Complete |
+| V2.0 | Light Protocol ZK-compression, Groth16 receipt proofs | ✅ Complete |
+| **V2.1** | **Wallet rewards, latency engine, benchmarks** | **✅ Current** |
+| V2.2 | Mobile daemon (iOS/Android via Rust cross-compilation) | 📋 Planned |
 
 ---
 

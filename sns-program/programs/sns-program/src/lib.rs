@@ -80,14 +80,37 @@ pub mod sns_program {
             total_lamports,
         )?;
 
-        // 2. SOLNET TOKEN REWARDS (V1.0)
-        // V1.0: Flat reward of 10 SOLNET per request
-        // Future: implement halving every 100M requests
-        let reward_amount = receipt_count
-            .checked_mul(10 * 10u64.pow(9)) // 10 tokens (9 decimals)
-            .ok_or(SnsError::Overflow)?;
+        // 2. SOLNET TOKEN REWARDS (V1.1 Dynamic Decay)
+        // Bitcion-style halving every 100M requests
+        let global_state = &mut ctx.accounts.program_state;
+        let initial_reward: u64 = 10 * 1_000_000_000; // 10 SOLNET
+        let halving_interval: u64 = 100_000_000;
+        
+        let mut total_reward = 0u64;
+        let mut current_global = global_state.global_request_count;
+        let mut remaining = receipt_count;
+        
+        while remaining > 0 {
+            let era = current_global / halving_interval;
+            let next_halving = (era + 1) * halving_interval;
+            let can_fill = next_halving - current_global;
+            let to_process = can_fill.min(remaining);
+            
+            // Halve the reward for each era: 10 -> 5 -> 2.5 -> ...
+            let era_reward = if era >= 64 { 0 } else { initial_reward >> era };
+            
+            total_reward = total_reward
+                .checked_add(to_process.checked_mul(era_reward).ok_or(SnsError::Overflow)?)
+                .ok_or(SnsError::Overflow)?;
+            
+            current_global += to_process;
+            remaining -= to_process;
+        }
 
-        let auth_bump = ctx.accounts.program_state.mint_authority_bump;
+        global_state.global_request_count = current_global;
+        let reward_amount = total_reward;
+
+        let auth_bump = global_state.mint_authority_bump;
         let auth_seeds: &[&[u8]] = &[b"solnet-mint-authority", &[auth_bump]];
 
         token::mint_to(
@@ -134,6 +157,7 @@ pub mod sns_program {
         state.admin = ctx.accounts.admin.key();
         state.solnet_mint = ctx.accounts.solnet_mint.key();
         state.mint_authority_bump = mint_authority_bump;
+        state.global_request_count = 0; // Initialize global count
         Ok(())
     }
 
@@ -417,6 +441,7 @@ pub struct ProgramState {
     pub admin: Pubkey,
     pub solnet_mint: Pubkey,
     pub mint_authority_bump: u8,
+    pub global_request_count: u64, // V1.1: Added for reward decay
 }
 
 impl ProgramState {

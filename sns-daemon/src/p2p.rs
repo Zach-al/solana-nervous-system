@@ -30,7 +30,7 @@ pub async fn start_p2p_node(
         .with_tokio()
         .with_tcp(
             tcp::Config::default(),
-            noise::Config::new,
+            (noise::Config::new, noise::Config::new),
             yamux::Config::default,
         )?
         .with_behaviour(|key| {

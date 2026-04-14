@@ -1,11 +1,15 @@
 target/
-.next/
 node_modules/
+.next/
 dist/
+patched_crates/
+.DS_Store
+*.log
+batches/
+*.backup
 .env
 .env.local
 .env.production
 *.key
 keypair.json
-batches/
 earnings_backup.json

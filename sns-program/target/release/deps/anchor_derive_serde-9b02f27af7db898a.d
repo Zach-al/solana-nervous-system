@@ -1,5 +1,0 @@
-/Users/bhupennayak/solana-nervous-system/sns-program/target/release/deps/anchor_derive_serde-9b02f27af7db898a.d: /Users/bhupennayak/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anchor-derive-serde-0.30.1/src/lib.rs
-
-/Users/bhupennayak/solana-nervous-system/sns-program/target/release/deps/libanchor_derive_serde-9b02f27af7db898a.dylib: /Users/bhupennayak/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anchor-derive-serde-0.30.1/src/lib.rs
-
-/Users/bhupennayak/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anchor-derive-serde-0.30.1/src/lib.rs:

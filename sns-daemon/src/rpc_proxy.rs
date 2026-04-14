@@ -1,5 +1,5 @@
 use crate::config::Config;
-use crate::security::{CircuitBreaker, InputSanitizer, RateLimiter};
+use crate::security::CircuitBreaker;
 use sha2::Digest;
 use anyhow::Result;
 use axum::{
@@ -16,7 +16,10 @@ use serde::Serialize;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tower_http::cors::{Any, CorsLayer};
-use tracing::{error, info, warn};
+use tracing::{info, error, warn};
+use serde_json;
+use base64::{engine::general_purpose, Engine as _};
+use std::sync::atomic::Ordering;
 
 // ─────────────────────────────────────────────────────────────
 // State
@@ -36,13 +39,19 @@ pub struct NodeStats {
 pub struct SharedState {
     pub stats: Arc<Mutex<NodeStats>>,
     pub solana_rpc_url: String,
-    pub rate_limiter: Arc<RateLimiter>,
     pub circuit_breaker: Arc<CircuitBreaker>,
     pub slot_cache: crate::SlotCache,
     pub zk_batch: Arc<Mutex<crate::zk_payments::ZkReceiptBatch>>,
     pub onion_router: Arc<OnionRouter>,
     pub peer_registry: Arc<DashMap<String, String>>,
     pub daily_salt: Arc<DailySalt>,
+    // V2.0 Enterprise Components
+    pub shard_router: Arc<crate::sharding::ShardRouter>,
+    pub parallel_executor: Arc<crate::parallel_executor::ParallelExecutor>,
+    pub geo_router: Arc<crate::geo_router::GeoRouter>,
+    pub load_balancer: Arc<crate::load_balancer::LoadBalancer>,
+    pub attack_prevention: Arc<crate::attack_prevention::AttackPrevention>,
+    pub config: Config,
 }
 
 pub struct DailySalt {
@@ -103,6 +112,11 @@ pub async fn start_rpc_proxy(
     onion_router: Arc<OnionRouter>,
     peer_registry: Arc<DashMap<String, String>>,
     daily_salt: Arc<DailySalt>,
+    shard_router: Arc<crate::sharding::ShardRouter>,
+    parallel_executor: Arc<crate::parallel_executor::ParallelExecutor>,
+    geo_router: Arc<crate::geo_router::GeoRouter>,
+    load_balancer: Arc<crate::load_balancer::LoadBalancer>,
+    attack_prevention: Arc<crate::attack_prevention::AttackPrevention>,
 ) -> Result<()> {
     let stats = Arc::new(Mutex::new(NodeStats {
         node_id: node_id.clone(),
@@ -113,30 +127,23 @@ pub async fn start_rpc_proxy(
         peer_count: 0,
     }));
 
-    let rate_limiter = Arc::new(RateLimiter::new());
     let circuit_breaker = Arc::new(CircuitBreaker::new());
-
-    // Background task: clean up stale rate-limiter entries every 5 minutes
-    {
-        let rl = rate_limiter.clone();
-        tokio::spawn(async move {
-            loop {
-                tokio::time::sleep(tokio::time::Duration::from_secs(300)).await;
-                rl.cleanup();
-            }
-        });
-    }
 
     let state = SharedState {
         stats,
         solana_rpc_url: config.solana_rpc_url.clone(),
-        rate_limiter,
         circuit_breaker,
         slot_cache,
         zk_batch,
         onion_router,
         peer_registry,
         daily_salt,
+        shard_router,
+        parallel_executor,
+        geo_router,
+        load_balancer,
+        attack_prevention,
+        config: config.clone(),
     };
 
     let cors = CorsLayer::new()
@@ -205,168 +212,131 @@ async fn rpc_handler(
     body: axum::body::Bytes,
 ) -> impl IntoResponse {
     let sec_headers = security_headers();
-
-    // ── 1. Extract client IP ──────────────────────────────────
     let client_ip = extract_ip(&headers);
 
-    // ── 2. Rate limiting — 100 req/min per IP ────────────────
-    if !state.rate_limiter.check(&client_ip) {
-        warn!("Rate limit exceeded for IP: {}", client_ip);
-        let mut resp = (
-            StatusCode::TOO_MANY_REQUESTS,
-            Json(serde_json::json!({
-                "jsonrpc": "2.0",
-                "error": {
-                    "code": -32029,
-                    "message": "Rate limit exceeded. Max 100 requests per minute."
-                },
-                "id": null
-            })),
-        )
-            .into_response();
-        resp.headers_mut().extend(sec_headers);
-        resp.headers_mut().insert(
-            "Retry-After",
-            HeaderValue::from_static("60"),
-        );
-        return resp;
+    // ── 1. Attack Prevention (Bans + Rate Limits) ───────────
+    if state.attack_prevention.is_banned(&client_ip) {
+        warn!("[V2.0 SECURITY] Blocked banned IP: {}", client_ip);
+        return (StatusCode::FORBIDDEN, "IP Banned for abuse").into_response();
     }
 
-    // ── 3. Parse JSON body ───────────────────────────────────
-    let body_str = match std::str::from_utf8(&body) {
-        Ok(s) => s,
-        Err(_) => {
-            let mut resp = (
-                StatusCode::BAD_REQUEST,
-                Json(serde_json::json!({
-                    "jsonrpc": "2.0",
-                    "error": { "code": -32700, "message": "Parse error: invalid UTF-8" },
-                    "id": null
-                })),
-            )
-                .into_response();
-            resp.headers_mut().extend(sec_headers);
+    match state.attack_prevention.check_rate_limit(&client_ip) {
+        crate::attack_prevention::RateResult::Banned => {
+            warn!("[V2.0 SECURITY] IP {} banned for excessive requests", client_ip);
+            return (StatusCode::FORBIDDEN, "IP Banned for abuse").into_response();
+        }
+        crate::attack_prevention::RateResult::Limited { retry_after } => {
+            let mut resp = (StatusCode::TOO_MANY_REQUESTS, "Rate limit exceeded").into_response();
+            resp.headers_mut().insert("Retry-After", HeaderValue::from(retry_after));
             return resp;
         }
+        crate::attack_prevention::RateResult::Allowed => {}
+    }
+
+    // ── 2. Parse & Sanitize ─────────────────────────────────
+    let body_str = match std::str::from_utf8(&body) {
+        Ok(s) => s,
+        Err(_) => return StatusCode::BAD_REQUEST.into_response(),
     };
+
+    if let crate::attack_prevention::ScanResult::Blocked(reason) = 
+        state.attack_prevention.scan_payload(body_str) 
+    {
+        warn!("[V2.0 SECURITY] Blocked malicious payload from {}: {}", client_ip, reason);
+        return (StatusCode::BAD_REQUEST, format!("Malicious payload: {}", reason)).into_response();
+    }
 
     let rpc_req: serde_json::Value = match serde_json::from_str(body_str) {
         Ok(v) => v,
-        Err(e) => {
-            warn!("Invalid JSON from {}: {}", client_ip, e);
-            let mut resp = (
-                StatusCode::BAD_REQUEST,
-                Json(serde_json::json!({
-                    "jsonrpc": "2.0",
-                    "error": { "code": -32700, "message": "Parse error" },
-                    "id": null
-                })),
-            )
-                .into_response();
-            resp.headers_mut().extend(sec_headers);
-            return resp;
-        }
+        Err(_) => return StatusCode::BAD_REQUEST.into_response(),
     };
 
-    // ── 4. Input sanitization (whitelist + depth check) ──────
-    if let Err(reason) = InputSanitizer::validate(&rpc_req) {
-        warn!("Input validation failed from {}: {}", client_ip, reason);
-        let mut resp = (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({
-                "jsonrpc": "2.0",
-                "error": { "code": -32600, "message": format!("Invalid request: {}", reason) },
-                "id": rpc_req.get("id")
-            })),
-        )
-            .into_response();
-        resp.headers_mut().extend(sec_headers);
-        return resp;
+    let method = rpc_req.get("method").and_then(|m| m.as_str()).unwrap_or("unknown");
+
+    // ── 3. Parallel Execution (Semaphore) ──────────────────
+    // Extract account key if available (e.g., getAccountInfo)
+    let account_key = rpc_req.get("params").and_then(|p| p.get(0)).and_then(|p| p.as_str());
+    let _permit = match state.parallel_executor.acquire(method, account_key).await {
+        Ok(p) => p,
+        Err(_) => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
+    };
+
+    // ── 4. Shard Routing (Mesh) ─────────────────────────────
+    if !state.shard_router.should_handle(method) {
+        let target_shard = state.shard_router.get_shard_for_method(method);
+        info!("[V2.0 SHARDING] Redirecting {:?} method '{}' to shard mesh", target_shard, method);
+        
+        // Find node in Geo mesh
+        if let Some(mesh_node) = state.geo_router.find_best_node(&state.config.region) {
+            info!("[V2.0 MESH] Routing to {} in region {:?}", mesh_node.peer_id, mesh_node.region);
+            
+            // Forward via Load Balancer / Onion Layer V2 if needed
+            // For now, proxy directly to mesh node endpoint with fallback
+            let client = reqwest::Client::new();
+            match client.post(&mesh_node.endpoint).body(body.clone()).send().await {
+                Ok(resp) => {
+                    let mut r = (StatusCode::from_u16(resp.status().as_u16()).unwrap(), resp.bytes().await.unwrap()).into_response();
+                    r.headers_mut().extend(sec_headers);
+                    return r;
+                }
+                Err(e) => {
+                    warn!("[V2.0 MESH] Mesh node {} failed, falling back to local: {}", mesh_node.endpoint, e);
+                    // FALLBACK TO LOCAL if mesh node is down (Nervous system must never go paralyzed)
+                }
+            }
+        }
     }
 
-    let method = rpc_req
-        .get("method")
-        .and_then(|m| m.as_str())
-        .unwrap_or("unknown");
-    info!("Proxying RPC method: {} from {}", method, client_ip);
+    // ── 5. Process Request (Intercepts or Upstream) ─────────
+    state.attack_prevention.increment_total();
 
-    // ── INTERCEPT getSlot ────────────────────────────────────
     if method == "getSlot" {
-        let slot = state.slot_cache.current_slot.load(std::sync::atomic::Ordering::Relaxed);
+        let slot = state.slot_cache.current_slot.load(Ordering::Relaxed);
         let mut response_json = serde_json::json!({
             "jsonrpc": "2.0",
             "result": slot,
             "id": rpc_req.get("id")
         });
 
-        // Generate and inject V0.2 Cryptographic Verify Proof
         let (_, proof) = crate::verifier::MerkleVerifier::generate_proof(&response_json);
         if let Some(obj) = response_json.as_object_mut() {
             obj.insert("solnet_proof".to_string(), serde_json::to_value(proof).unwrap());
         }
 
-        // ADD RECEIPT FOR V0.3
+        // Add receipt
         {
             let mut batch = state.zk_batch.lock().await;
-            let salt = state.daily_salt.get_or_rotate();
             batch.add_receipt(crate::zk_payments::PaymentReceipt {
-                client_ip_hash: hex::encode(sha2::Sha256::digest(format!("{}{}", client_ip, salt).as_bytes())),
-
-                amount_lamports: 100, // Fixed cost for slot check
+                client_ip_hash: hex::encode(sha2::Sha256::digest(format!("{}{}", client_ip, state.daily_salt.get_or_rotate()).as_bytes())),
+                amount_lamports: 100,
                 method: "getSlot".to_string(),
-                timestamp: chrono::Utc::now().timestamp() as u64,
+                timestamp: Utc::now().timestamp() as u64,
                 nonce: uuid::Uuid::new_v4().to_string(),
                 node_signature: "TODO_SIGNATURE".to_string(),
             });
         }
 
-        let mut r = (
-            StatusCode::OK,
-            Json(response_json),
-        )
-            .into_response();
+        let mut r = (StatusCode::OK, Json(response_json)).into_response();
         r.headers_mut().extend(sec_headers);
         return r;
     }
 
-    // ── 5. Circuit breaker — fail fast if upstream is down ────
+    // ── 6. Fail-over Upstream Load Balancer ─────────────────
     if state.circuit_breaker.is_open() {
-        warn!("Circuit breaker OPEN — refusing upstream request");
-        let mut resp = (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(serde_json::json!({
-                "jsonrpc": "2.0",
-                "error": {
-                    "code": -32000,
-                    "message": "Upstream Solana RPC is temporarily unavailable. Try again in 30s."
-                },
-                "id": rpc_req.get("id")
-            })),
-        )
-            .into_response();
-        resp.headers_mut().extend(sec_headers);
-        resp.headers_mut().insert(
-            "Retry-After",
-            HeaderValue::from_static("30"),
-        );
-        return resp;
+        return StatusCode::SERVICE_UNAVAILABLE.into_response();
     }
 
-    // ── 6. Forward to upstream Solana RPC ────────────────────
-    let client = reqwest::Client::new();
-    let rpc_url = state.solana_rpc_url.clone();
+    let start_time = Utc::now();
+    let upstream_rpc = state.load_balancer.select_node().await.unwrap_or_else(|| state.solana_rpc_url.clone());
 
-    match client
-        .post(&rpc_url)
-        .header("Content-Type", "application/json")
-        .body(body_str.to_string())
-        .send()
-        .await
-    {
+    let client = reqwest::Client::new();
+    match client.post(&upstream_rpc).header("Content-Type", "application/json").body(body_str.to_string()).send().await {
         Ok(resp) => {
+            let latency = (Utc::now() - start_time).num_milliseconds() as u64;
+            state.load_balancer.record_success(&upstream_rpc, latency).await;
+            
             match resp.bytes().await {
                 Ok(response_bytes) => {
-                    // ── 7. Success: record and return ─────────────────────
                     state.circuit_breaker.record_success();
                     {
                         let mut stats = state.stats.lock().await;
@@ -374,13 +344,11 @@ async fn rpc_handler(
                         stats.earnings_lamports += 100;
                     }
 
-                    // ADD RECEIPT FOR V0.3
+                    // Add Receipt
                     {
                         let mut batch = state.zk_batch.lock().await;
-                        let salt = state.daily_salt.get_or_rotate();
                         batch.add_receipt(crate::zk_payments::PaymentReceipt {
-                            client_ip_hash: hex::encode(sha2::Sha256::digest(format!("{}{}", client_ip, salt).as_bytes())),
-
+                            client_ip_hash: hex::encode(sha2::Sha256::digest(format!("{}{}", client_ip, state.daily_salt.get_or_rotate()).as_bytes())),
                             amount_lamports: 100,
                             method: method.to_string(),
                             timestamp: Utc::now().timestamp() as u64,
@@ -389,12 +357,7 @@ async fn rpc_handler(
                         });
                     }
 
-                    let mut response_json: serde_json::Value =
-                        serde_json::from_slice(&response_bytes).unwrap_or_else(|_| {
-                            serde_json::json!({ "error": "invalid upstream response" })
-                        });
-
-                    // Generate and inject V0.2 Cryptographic Verify Proof
+                    let mut response_json: serde_json::Value = serde_json::from_slice(&response_bytes).unwrap();
                     let (_, proof) = crate::verifier::MerkleVerifier::generate_proof(&response_json);
                     if let Some(obj) = response_json.as_object_mut() {
                         obj.insert("solnet_proof".to_string(), serde_json::to_value(proof).unwrap());
@@ -404,39 +367,13 @@ async fn rpc_handler(
                     r.headers_mut().extend(sec_headers);
                     r
                 }
-                Err(e) => {
-                    // ── 8. Read failure ───────────────────────────────────
-                    error!("Failed to read upstream response: {}", e);
-                    state.circuit_breaker.record_failure();
-                    let mut r = (
-                        StatusCode::BAD_GATEWAY,
-                        Json(serde_json::json!({
-                            "jsonrpc": "2.0",
-                            "error": { "code": -32603, "message": "Upstream read error" },
-                            "id": null
-                        })),
-                    )
-                        .into_response();
-                    r.headers_mut().extend(sec_headers);
-                    r
-                }
+                Err(_) => StatusCode::BAD_GATEWAY.into_response()
             }
         }
-        Err(e) => {
-            // ── 8. Connection failure ─────────────────────────────────
-            error!("Failed to forward RPC request to {}: {}", rpc_url, e);
+        Err(_) => {
+            state.load_balancer.record_error(&upstream_rpc).await;
             state.circuit_breaker.record_failure();
-            let mut r = (
-                StatusCode::BAD_GATEWAY,
-                Json(serde_json::json!({
-                    "jsonrpc": "2.0",
-                    "error": { "code": -32603, "message": format!("Upstream error: {}", e) },
-                    "id": null
-                })),
-            )
-                .into_response();
-            r.headers_mut().extend(sec_headers);
-            r
+            StatusCode::BAD_GATEWAY.into_response()
         }
     }
 }
@@ -458,7 +395,7 @@ async fn onion_handler(
     let sec_headers = security_headers();
     
     // Decode layer
-    let wrapped = match base64::decode(&payload.layer) {
+    let wrapped = match general_purpose::STANDARD.decode(&payload.layer) {
         Ok(b) => b,
         Err(_) => return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error":"invalid base64"}))).into_response(),
     };
@@ -495,7 +432,7 @@ async fn onion_handler(
                 // Forward via HTTP to next hop
                 let client = reqwest::Client::new();
                 let forward_payload = OnionRequest {
-                    layer: base64::encode(&peeled.inner_payload),
+                    layer: general_purpose::STANDARD.encode(&peeled.inner_payload),
                     next_hop: peeled.next_hop.clone(),
                 };
                 
