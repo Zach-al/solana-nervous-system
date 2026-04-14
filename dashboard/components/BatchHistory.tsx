@@ -84,7 +84,7 @@ export default function BatchHistory() {
                 }}>
                     <div style={{
                         width: '100%',
-                        maxSize: '600px',
+                        maxWidth: '600px',
                         background: 'var(--bg-secondary)',
                         border: '1px solid var(--border-main)',
                         position: 'relative'
