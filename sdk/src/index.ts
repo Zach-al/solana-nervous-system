@@ -16,6 +16,7 @@ export class SolnetConnection extends Connection {
   private privacy: boolean;
   private peerDiscovery: PeerDiscovery;
   private initialized: boolean = false;
+  private performanceMetrics: Record<string, { total: number, count: number, min: number, max: number }> = {};
 
   constructor(config: SolnetConfig = {}) {
     const endpoint = config.endpoint || BOOTSTRAP_PEERS[0];
@@ -55,6 +56,7 @@ export class SolnetConnection extends Connection {
   // @ts-ignore - Internal web3.js method override
   async _rpcRequest(method: string, args: any[]): Promise<any> {
     await this.ensureInitialized();
+    const start = Date.now();
 
     try {
       let targetUrl = this.solnetEndpoint;
@@ -88,10 +90,21 @@ export class SolnetConnection extends Connection {
       }
 
       const data = await response.json();
+      const latency = Date.now() - start;
+
+      // Track SDK-side performance metrics
+      if (!this.performanceMetrics[method]) {
+        this.performanceMetrics[method] = { total: 0, count: 0, min: Infinity, max: 0 };
+      }
+      const m = this.performanceMetrics[method];
+      m.total += latency;
+      m.count += 1;
+      m.min = Math.min(m.min, latency);
+      m.max = Math.max(m.max, latency);
 
       // V0.2 Cryptographic Verification
       if (data.solnet_proof) {
-        console.log('[SOLNET] ✅ Verified:', data.solnet_proof.commitment);
+        console.log(`[SOLNET] ✅ Verified: ${data.solnet_proof.commitment} (${latency}ms)`);
       }
 
       return data.result !== undefined ? data : { result: data };
@@ -125,6 +138,19 @@ export class SolnetConnection extends Connection {
 
   getPrivacyStatus(): string {
     return this.privacy ? 'ENTRY-NODE ONION ACTIVE' : 'DISABLED';
+  }
+
+  getPerformanceSummary(): any {
+    const summary: any = {};
+    for (const [method, m] of Object.entries(this.performanceMetrics)) {
+      summary[method] = {
+        avgLatencyMs: Math.round(m.total / m.count),
+        minLatencyMs: m.min,
+        maxLatencyMs: m.max,
+        requestCount: m.count
+      };
+    }
+    return summary;
   }
 
   destroy(): void {

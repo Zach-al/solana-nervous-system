@@ -1,6 +1,6 @@
 [package]
 name = "sns-daemon"
-version = "2.0.0"
+version = "2.1.0"
 edition = "2021"
 authors = ["SOLNET Enterprise"]
 description = "Enterprise-grade decentralized RPC mesh daemon"
@@ -20,7 +20,7 @@ dotenv = "0.15.0"
 futures = "0.3.29"
 hex = "0.4.3"
 libp2p = { version = "0.52.4", features = ["tcp", "dns", "websocket", "noise", "yamux", "kad", "identify", "ping", "macros", "tokio"] }
-reqwest = { version = "0.11.22", features = ["json"] }
+reqwest = { version = "0.11.22", features = ["json", "rustls-tls"] }
 serde = { version = "1.0.190", features = ["derive"] }
 serde_json = "1.0.108"
 sha2 = "0.10.8"
@@ -34,7 +34,19 @@ ed25519-dalek = "1.0.1"
 x25519-dalek = { version = "2.0.0", features = ["static_secrets"] }
 aes-gcm = "0.10.3"
 hmac = "0.12.1"
-tower = { version = "0.4.13", features = ["util"] }
+tower = { version = "0.4.13", features = ["util", "timeout"] }
+solana-client = "1.18.0"
+solana-sdk = "1.18.0"
+
+[features]
+# Cleaned up features
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[[bench]]
+name = "latency_bench"
+harness = false
 
 [profile.release]
 opt-level = 3

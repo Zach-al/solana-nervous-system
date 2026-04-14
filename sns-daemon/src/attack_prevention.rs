@@ -4,7 +4,6 @@ use dashmap::DashMap;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use serde_json;
-use rand;
 use tracing;
 
 pub struct AttackPrevention {
@@ -132,6 +131,16 @@ impl AttackPrevention {
     pub fn increment_total(&self) {
         self.total_requests
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    pub fn validate_host(host: &str) -> bool {
+        let allowed = [
+            "localhost",
+            "127.0.0.1",
+            "solnet-production.up.railway.app",
+            "0.0.0.0",
+        ];
+        allowed.iter().any(|h| host.contains(h))
     }
 }
 

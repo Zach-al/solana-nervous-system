@@ -1,6 +1,5 @@
 use crate::config::Config;
 use crate::security::CircuitBreaker;
-use sha2::Digest;
 use anyhow::Result;
 use axum::{
     extract::State,
@@ -16,7 +15,7 @@ use serde::Serialize;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tower_http::cors::{Any, CorsLayer};
-use tracing::{info, error, warn};
+use tracing::{info, warn, error};
 use serde_json;
 use base64::{engine::general_purpose, Engine as _};
 use std::sync::atomic::Ordering;
@@ -51,6 +50,8 @@ pub struct SharedState {
     pub geo_router: Arc<crate::geo_router::GeoRouter>,
     pub load_balancer: Arc<crate::load_balancer::LoadBalancer>,
     pub attack_prevention: Arc<crate::attack_prevention::AttackPrevention>,
+    pub wallet_tracker: Option<Arc<crate::wallet_rewards::WalletRewardTracker>>,
+    pub latency_engine: Arc<crate::latency_engine::LatencyEngine>,
     pub config: Config,
 }
 
@@ -117,6 +118,8 @@ pub async fn start_rpc_proxy(
     geo_router: Arc<crate::geo_router::GeoRouter>,
     load_balancer: Arc<crate::load_balancer::LoadBalancer>,
     attack_prevention: Arc<crate::attack_prevention::AttackPrevention>,
+    wallet_tracker: Option<Arc<crate::wallet_rewards::WalletRewardTracker>>,
+    latency_engine: Arc<crate::latency_engine::LatencyEngine>,
 ) -> Result<()> {
     let stats = Arc::new(Mutex::new(NodeStats {
         node_id: node_id.clone(),
@@ -143,6 +146,8 @@ pub async fn start_rpc_proxy(
         geo_router,
         load_balancer,
         attack_prevention,
+        wallet_tracker,
+        latency_engine,
         config: config.clone(),
     };
 
@@ -156,6 +161,15 @@ pub async fn start_rpc_proxy(
         .route("/health", get(health_handler))
         .route("/stats", get(stats_handler))
         .route("/onion", post(onion_handler))
+        .route("/performance", get(performance_handler))
+        .route("/wallet", get(wallet_handler))
+        .layer(
+            tower::ServiceBuilder::new()
+                .layer(axum::error_handling::HandleErrorLayer::new(|_: tower::BoxError| async {
+                    StatusCode::REQUEST_TIMEOUT
+                }))
+                .layer(tower::timeout::TimeoutLayer::new(std::time::Duration::from_secs(5))),
+        )
         .layer(cors)
         .with_state(state);
 
@@ -193,13 +207,23 @@ fn security_headers() -> HeaderMap {
 // ─────────────────────────────────────────────────────────────
 
 pub fn extract_ip(headers: &HeaderMap) -> String {
-
+    // Railway-specific proxy trust
+    let _trusted_proxies = ["10.", "172.", "192.168."]; // Internal network
+    
+    let socket_ip = "unknown"; // In axum 0.7 we'd use ConnectInfo, but headers are more reliable on Railway
+    
     headers
         .get("x-forwarded-for")
         .and_then(|v| v.to_str().ok())
         .and_then(|s| s.split(',').next())
         .map(|s| s.trim().to_string())
-        .unwrap_or_else(|| "unknown".to_string())
+        .unwrap_or_else(|| socket_ip.to_string())
+}
+
+pub fn sanitize_header_value(val: &str) -> String {
+    val.chars()
+        .filter(|&c| c != '\r' && c != '\n')
+        .collect()
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -211,18 +235,26 @@ async fn rpc_handler(
     headers: HeaderMap,
     body: axum::body::Bytes,
 ) -> impl IntoResponse {
+    let start_instant = std::time::Instant::now();
     let sec_headers = security_headers();
     let client_ip = extract_ip(&headers);
+    
+    // ── 0. Host Header Validation ──────────────────────────
+    let host = headers.get("host").and_then(|v| v.to_str().ok()).unwrap_or("unknown");
+    if !crate::attack_prevention::AttackPrevention::validate_host(host) {
+        warn!("[V2.1 SECURITY] Blocked invalid Host header: {}", host);
+        return (StatusCode::BAD_REQUEST, "Invalid Host header").into_response();
+    }
 
     // ── 1. Attack Prevention (Bans + Rate Limits) ───────────
     if state.attack_prevention.is_banned(&client_ip) {
-        warn!("[V2.0 SECURITY] Blocked banned IP: {}", client_ip);
+        warn!("[V2.1 SECURITY] Blocked banned IP: {}", client_ip);
         return (StatusCode::FORBIDDEN, "IP Banned for abuse").into_response();
     }
 
     match state.attack_prevention.check_rate_limit(&client_ip) {
         crate::attack_prevention::RateResult::Banned => {
-            warn!("[V2.0 SECURITY] IP {} banned for excessive requests", client_ip);
+            warn!("[V2.1 SECURITY] IP {} banned for excessive requests", client_ip);
             return (StatusCode::FORBIDDEN, "IP Banned for abuse").into_response();
         }
         crate::attack_prevention::RateResult::Limited { retry_after } => {
@@ -242,7 +274,7 @@ async fn rpc_handler(
     if let crate::attack_prevention::ScanResult::Blocked(reason) = 
         state.attack_prevention.scan_payload(body_str) 
     {
-        warn!("[V2.0 SECURITY] Blocked malicious payload from {}: {}", client_ip, reason);
+        warn!("[V2.1 SECURITY] Blocked malicious payload from {}: {}", client_ip, reason);
         return (StatusCode::BAD_REQUEST, format!("Malicious payload: {}", reason)).into_response();
     }
 
@@ -252,26 +284,40 @@ async fn rpc_handler(
     };
 
     let method = rpc_req.get("method").and_then(|m| m.as_str()).unwrap_or("unknown");
+    let params = rpc_req.get("params").unwrap_or(&serde_json::Value::Null);
 
-    // ── 3. Parallel Execution (Semaphore) ──────────────────
-    // Extract account key if available (e.g., getAccountInfo)
-    let account_key = rpc_req.get("params").and_then(|p| p.get(0)).and_then(|p| p.as_str());
+    // ── 3. Latency Engine (L1/L2/L3 Cache) ──────────────────
+    if let Some(cached) = state.latency_engine.get_cached(method, params) {
+        let latency_us = start_instant.elapsed().as_micros() as u64;
+        state.latency_engine.record_latency(method, latency_us);
+        
+        // Record reward for cache hit
+        if let Some(tracker) = &state.wallet_tracker {
+            tracker.record_request().await;
+        }
+
+        let mut r = (StatusCode::OK, Json(cached)).into_response();
+        r.headers_mut().extend(sec_headers);
+        return r;
+    }
+
+    // ── 4. Parallel Execution (Semaphore) ──────────────────
+    let account_key = params.get(0).and_then(|p| p.as_str());
     let _permit = match state.parallel_executor.acquire(method, account_key).await {
         Ok(p) => p,
         Err(_) => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
     };
 
-    // ── 4. Shard Routing (Mesh) ─────────────────────────────
+    // ── 5. Shard Routing (Mesh) ─────────────────────────────
     if !state.shard_router.should_handle(method) {
         let target_shard = state.shard_router.get_shard_for_method(method);
-        info!("[V2.0 SHARDING] Redirecting {:?} method '{}' to shard mesh", target_shard, method);
+        info!("[V2.1 SHARDING] Redirecting {:?} method '{}' to shard mesh", target_shard, method);
         
         // Find node in Geo mesh
         if let Some(mesh_node) = state.geo_router.find_best_node(&state.config.region) {
-            info!("[V2.0 MESH] Routing to {} in region {:?}", mesh_node.peer_id, mesh_node.region);
+            info!("[V2.1 MESH] Routing to {} in region {:?}", mesh_node.peer_id, mesh_node.region);
             
             // Forward via Load Balancer / Onion Layer V2 if needed
-            // For now, proxy directly to mesh node endpoint with fallback
             let client = reqwest::Client::new();
             match client.post(&mesh_node.endpoint).body(body.clone()).send().await {
                 Ok(resp) => {
@@ -280,14 +326,13 @@ async fn rpc_handler(
                     return r;
                 }
                 Err(e) => {
-                    warn!("[V2.0 MESH] Mesh node {} failed, falling back to local: {}", mesh_node.endpoint, e);
-                    // FALLBACK TO LOCAL if mesh node is down (Nervous system must never go paralyzed)
+                    warn!("[V2.1 MESH] Mesh node {} failed, falling back to local: {}", mesh_node.endpoint, e);
                 }
             }
         }
     }
 
-    // ── 5. Process Request (Intercepts or Upstream) ─────────
+    // ── 6. Process Request (Intercepts or Upstream) ─────────
     state.attack_prevention.increment_total();
 
     if method == "getSlot" {
@@ -298,22 +343,21 @@ async fn rpc_handler(
             "id": rpc_req.get("id")
         });
 
+        // Verifier & Proofs
         let (_, proof) = crate::verifier::MerkleVerifier::generate_proof(&response_json);
         if let Some(obj) = response_json.as_object_mut() {
             obj.insert("solnet_proof".to_string(), serde_json::to_value(proof).unwrap());
+            obj.insert("cached".to_string(), serde_json::to_value(true).unwrap());
         }
 
-        // Add receipt
-        {
-            let mut batch = state.zk_batch.lock().await;
-            batch.add_receipt(crate::zk_payments::PaymentReceipt {
-                client_ip_hash: hex::encode(sha2::Sha256::digest(format!("{}{}", client_ip, state.daily_salt.get_or_rotate()).as_bytes())),
-                amount_lamports: 100,
-                method: "getSlot".to_string(),
-                timestamp: Utc::now().timestamp() as u64,
-                nonce: uuid::Uuid::new_v4().to_string(),
-                node_signature: "TODO_SIGNATURE".to_string(),
-            });
+        // Cache and metrics
+        let latency_us = start_instant.elapsed().as_micros() as u64;
+        state.latency_engine.record_latency(method, latency_us);
+        state.latency_engine.set_cache(method, params, response_json.clone());
+
+        // Reward tracker
+        if let Some(tracker) = &state.wallet_tracker {
+            tracker.record_request().await;
         }
 
         let mut r = (StatusCode::OK, Json(response_json)).into_response();
@@ -321,43 +365,34 @@ async fn rpc_handler(
         return r;
     }
 
-    // ── 6. Fail-over Upstream Load Balancer ─────────────────
+    // ── 7. Fail-over Upstream Load Balancer ─────────────────
     if state.circuit_breaker.is_open() {
         return StatusCode::SERVICE_UNAVAILABLE.into_response();
     }
 
-    let start_time = Utc::now();
     let upstream_rpc = state.load_balancer.select_node().await.unwrap_or_else(|| state.solana_rpc_url.clone());
+    let client = state.latency_engine.connection_pool.get_client();
 
-    let client = reqwest::Client::new();
     match client.post(&upstream_rpc).header("Content-Type", "application/json").body(body_str.to_string()).send().await {
         Ok(resp) => {
-            let latency = (Utc::now() - start_time).num_milliseconds() as u64;
-            state.load_balancer.record_success(&upstream_rpc, latency).await;
+            let latency_us = start_instant.elapsed().as_micros() as u64;
+            state.latency_engine.record_latency(method, latency_us);
+            state.load_balancer.record_success(&upstream_rpc, latency_us / 1000).await;
             
             match resp.bytes().await {
                 Ok(response_bytes) => {
                     state.circuit_breaker.record_success();
-                    {
-                        let mut stats = state.stats.lock().await;
-                        stats.requests_served += 1;
-                        stats.earnings_lamports += 100;
-                    }
-
-                    // Add Receipt
-                    {
-                        let mut batch = state.zk_batch.lock().await;
-                        batch.add_receipt(crate::zk_payments::PaymentReceipt {
-                            client_ip_hash: hex::encode(sha2::Sha256::digest(format!("{}{}", client_ip, state.daily_salt.get_or_rotate()).as_bytes())),
-                            amount_lamports: 100,
-                            method: method.to_string(),
-                            timestamp: Utc::now().timestamp() as u64,
-                            nonce: uuid::Uuid::new_v4().to_string(),
-                            node_signature: "TODO_SIGNATURE".to_string(),
-                        });
+                    
+                    // Reward tracker
+                    if let Some(tracker) = &state.wallet_tracker {
+                        tracker.record_request().await;
                     }
 
                     let mut response_json: serde_json::Value = serde_json::from_slice(&response_bytes).unwrap();
+                    
+                    // Cache the upstream response
+                    state.latency_engine.set_cache(method, params, response_json.clone());
+
                     let (_, proof) = crate::verifier::MerkleVerifier::generate_proof(&response_json);
                     if let Some(obj) = response_json.as_object_mut() {
                         obj.insert("solnet_proof".to_string(), serde_json::to_value(proof).unwrap());
@@ -395,7 +430,7 @@ async fn onion_handler(
     let sec_headers = security_headers();
     
     // Decode layer
-    let wrapped = match general_purpose::STANDARD.decode(&payload.layer) {
+    let wrapped: Vec<u8> = match general_purpose::STANDARD.decode(&payload.layer) {
         Ok(b) => b,
         Err(_) => return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error":"invalid base64"}))).into_response(),
     };
@@ -474,14 +509,23 @@ async fn onion_handler(
 // Root GET endpoint (for browsers)
 // ─────────────────────────────────────────────────────────────
 
-async fn root_get_handler() -> impl IntoResponse {
-    let mut r = (
-        StatusCode::OK,
-        "SOLNET JSON-RPC Gateway is active.\nSend POST requests with JSON-RPC payload.",
-    )
-        .into_response();
+async fn performance_handler(State(state): State<SharedState>) -> impl IntoResponse {
+    let mut r = Json(state.latency_engine.get_performance_report()).into_response();
     r.headers_mut().extend(security_headers());
     r
+}
+
+async fn wallet_handler(State(state): State<SharedState>) -> impl IntoResponse {
+    if let Some(tracker) = &state.wallet_tracker {
+        let mut r = Json(tracker.get_reward_status().await).into_response();
+        r.headers_mut().extend(security_headers());
+        return r;
+    }
+    (StatusCode::NOT_IMPLEMENTED, "Wallet tracking not enabled").into_response()
+}
+
+async fn root_get_handler() -> impl IntoResponse {
+    (StatusCode::OK, "SOLNET JSON-RPC Gateway V2.1 is active.\nSend POST requests with JSON-RPC payload.").into_response()
 }
 
 // ─────────────────────────────────────────────────────────────

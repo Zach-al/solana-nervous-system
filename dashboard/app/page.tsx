@@ -1,6 +1,8 @@
 'use client';
 import dynamic from 'next/dynamic';
 import StatsPanel from '../components/StatsPanel';
+import PerformancePanel from '../components/PerformancePanel';
+import WalletPanel from '../components/WalletPanel';
 import ActivityFeed from '../components/ActivityFeed';
 import BatchHistory from '../components/BatchHistory';
 import { useEffect, useState } from 'react';
@@ -51,14 +53,17 @@ export default function Home() {
         <div className="header-meta">
           <span>DEVNET</span>
           <span className="header-badge">▶ LIVE</span>
-          <span>v1.0.0</span>
+          <span>v2.1.0</span>
           <span className="live-indicator" />
         </div>
       </header>
 
       {/* Body: sidebar | center | sidebar — glassmorphism panels */}
       <div className="dashboard-body">
-        <StatsPanel />
+        <div className="sidebar">
+          <WalletPanel />
+          <StatsPanel />
+        </div>
         <div className="center-area">
           {/* Mobile-only static globe replacement */}
           {isMobile && (
@@ -69,7 +74,9 @@ export default function Home() {
           )}
           <BatchHistory />
         </div>
-        <ActivityFeed />
+        <div className="sidebar">
+          <PerformancePanel />
+        </div>
       </div>
     </main>
   );

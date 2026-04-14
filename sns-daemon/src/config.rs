@@ -14,6 +14,7 @@ pub struct Config {
     pub region: Region,
     pub max_concurrent_requests: usize,
     pub rate_limit_per_min: u64,
+    pub node_wallet_pubkey: String,
 }
 
 impl Config {
@@ -57,6 +58,7 @@ impl Config {
             region,
             max_concurrent_requests: max_concurrent,
             rate_limit_per_min: rate_limit,
+            node_wallet_pubkey: env::var("NODE_WALLET_PUBKEY").unwrap_or_default(),
         }
     }
 }

@@ -11,6 +11,8 @@ pub mod parallel_executor;
 pub mod geo_router;
 pub mod load_balancer;
 pub mod attack_prevention;
+pub mod wallet_rewards;
+pub mod latency_engine;
 
 use anyhow::Result;
 use serde_json;
@@ -43,7 +45,7 @@ async fn main() -> Result<()> {
         .with(EnvFilter::new(&cfg.log_level))
         .init();
     
-    tracing::info!("Starting SOLNET V2.0 Enterprise Release...");
+    tracing::info!("Starting SOLNET V2.1 Enterprise Release...");
 
     let cfg_clone = cfg.clone();
     let cfg_clone2 = cfg.clone();
@@ -65,6 +67,19 @@ async fn main() -> Result<()> {
     let geo_router = Arc::new(geo_router::GeoRouter::new(cfg.region.clone()));
     let load_balancer = Arc::new(load_balancer::LoadBalancer::new(load_balancer::Strategy::Adaptive));
     let attack_prevention = Arc::new(attack_prevention::AttackPrevention::new());
+    
+    // Initialize V2.1 components
+    let wallet_tracker = if cfg.node_wallet_pubkey.is_empty() {
+        tracing::warn!("NODE_WALLET_PUBKEY not set. Earnings tracked in memory only.");
+        None
+    } else {
+        Some(Arc::new(wallet_rewards::WalletRewardTracker::new(
+            &cfg.node_wallet_pubkey,
+            cfg.solana_rpc_url.clone(),
+        )?))
+    };
+    
+    let latency_engine = Arc::new(latency_engine::LatencyEngine::new(cfg.max_concurrent_requests));
 
     // Register local node in geo router
     geo_router.register_node(geo_router::GeoNode {
@@ -95,6 +110,15 @@ async fn main() -> Result<()> {
         loop {
             tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
             ap_cleanup.cleanup();
+        }
+    });
+
+    // Spawn cache eviction task (V2.1)
+    let le_cleanup = latency_engine.clone();
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
+            le_cleanup.evict_expired();
         }
     });
 
@@ -167,6 +191,8 @@ async fn main() -> Result<()> {
             geo_router,
             load_balancer,
             attack_prevention,
+            wallet_tracker,
+            latency_engine,
         ).await {
             tracing::error!("RPC proxy error: {}", e);
         }
@@ -194,13 +220,14 @@ fn print_banner(
         r#"
 ╔══════════════════════════════════════════════════════════╗
 ║        🧠  SOLANA NERVOUS SYSTEM (SNS) DAEMON           ║
-║             Enterprise Release V2.0                      ║
+║             Enterprise Release V2.1                      ║
 ╠══════════════════════════════════════════════════════════╣
 ║  NODE NAME : {:<43}║
 ║  RPC PROXY : http://0.0.0.0:{:<29}║
 ║  P2P MESH  : /ip4/0.0.0.0/tcp/{:<27}║
 ║  SHARD     : {:<43?}║
 ║  REGION    : {:<43?}║
+║  WALLET    : {:<43}║
 ║  ONION KEY : {:<43}║
 ╚══════════════════════════════════════════════════════════╝
 "#,
@@ -209,6 +236,7 @@ fn print_banner(
         cfg.p2p_port,
         shard_router.shard_type,
         geo_router.local_region,
+        if cfg.node_wallet_pubkey.is_empty() { "NOT CONFIGURED".to_string() } else { cfg.node_wallet_pubkey.clone() },
         hex::encode(onion_router.public_key.as_bytes())
     );
 }
