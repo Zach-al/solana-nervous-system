@@ -35,6 +35,7 @@ x25519-dalek = { version = "2.0.0", features = ["static_secrets"] }
 aes-gcm = "0.10.3"
 hmac = "0.12.1"
 tower = { version = "0.4.13", features = ["util", "timeout"] }
+time = "=0.3.36"
 
 [features]
 # Cleaned up features
