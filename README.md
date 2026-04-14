@@ -133,6 +133,52 @@ Your node joins the global mesh immediately. Earnings begin on the first proxied
 
 ---
 
+## Mobile & Raspberry Pi
+
+SOLNET runs on any device. One command install:
+
+### macOS / Linux
+```bash
+curl -fsSL https://raw.githubusercontent.com/Zach-al/solana-nervous-system/main/install.sh | sh
+```
+
+### Raspberry Pi
+```bash
+curl -fsSL https://raw.githubusercontent.com/Zach-al/solana-nervous-system/main/scripts/install-pi.sh | sh
+
+# Auto-start on boot
+sudo cp scripts/solnet.service /etc/systemd/system/
+sudo systemctl enable solnet && sudo systemctl start solnet
+```
+
+### Cross-compilation (build for other platforms)
+```bash
+# Build for Raspberry Pi from Mac
+make build-pi
+
+# Build for Android
+make build-android
+```
+
+### Supported Platforms
+| Platform | Status | Notes |
+|----------|--------|-------|
+| macOS (M1/M2/Intel) | ✅ Full node | Recommended for dev |
+| Linux x64 | ✅ Full node | Recommended for servers |
+| Raspberry Pi 4 | ✅ Full node | Recommended for home |
+| Windows | ✅ Full node | Via WSL2 recommended |
+| Android | ✅ Light node | Battery optimized |
+| iOS | ✅ Light node | Battery optimized |
+
+Mobile nodes (iOS/Android) run in light mode:
+- No DHT peer discovery (saves battery)
+- Routes through nearest desktop node
+- 2-hour settlement batching (saves battery)
+- Auto-throttle below 20% battery
+- Earns SOL just like desktop nodes
+
+---
+
 ## Security
 
 | Layer | Implementation |
@@ -158,10 +204,10 @@ solana-nervous-system/
 
 | Component | Version | Stack |
 |---|---|---|
-| `sns-daemon` | 1.0.0 | Rust, Tokio, Axum, libp2p, AES-GCM, X25519 |
-| `sns-program` | 1.0.0 | Anchor, anchor-spl, Solana |
-| `solnet-sdk` | 1.0.0 | TypeScript, @solana/web3.js |
-| `dashboard` | 1.0.0 | Next.js 16, Three.js, Tailwind CSS |
+| `sns-daemon` | 2.1.0 | Rust, Tokio, Axum, libp2p, AES-GCM, X25519 |
+| `sns-program` | 2.1.0 | Anchor, anchor-spl, Solana |
+| `solnet-sdk` | 2.1.0 | TypeScript, @solana/web3.js |
+| `dashboard` | 2.1.0 | Next.js 16, Three.js, Tailwind CSS |
 
 ---
 
@@ -195,9 +241,10 @@ curl -X POST https://solnet-production.up.railway.app \
 | V0.3 | ZK-compressed batch settlement (1000x cost reduction) | ✅ Complete |
 | V0.4 | Onion routing privacy layer (AES-GCM + X25519) | ✅ Complete |
 | V1.0 | $SOLNET token, NPM SDK, production deployment | ✅ Complete |
+| **V1.2** | **Mobile daemon (iOS/Android/Pi), battery guard, cross-compilation** | **✅ Current** |
 | V2.0 | Light Protocol ZK-compression, Groth16 receipt proofs | ✅ Complete |
-| **V2.1** | **Wallet rewards, latency engine, benchmarks** | **✅ Current** |
-| V2.2 | Mobile daemon (iOS/Android via Rust cross-compilation) | 📋 Planned |
+| V2.1 | Wallet rewards, latency engine, security hardening | ✅ Complete |
+| V2.2 | Sharded mesh routing, multi-region orchestration | 🔜 Next |
 
 ---
 

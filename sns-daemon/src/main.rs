@@ -13,12 +13,17 @@ pub mod load_balancer;
 pub mod attack_prevention;
 pub mod wallet_rewards;
 pub mod latency_engine;
+pub mod platform;
+pub mod battery_guard;
+pub mod mobile_peer;
 
 use anyhow::Result;
 use serde_json;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
+use platform::{Platform, PlatformConfig};
+use battery_guard::BatteryGuard;
 
 #[derive(Clone)]
 pub struct SlotCache {
@@ -44,8 +49,15 @@ async fn main() -> Result<()> {
         .with(fmt::layer().with_target(false))
         .with(EnvFilter::new(&cfg.log_level))
         .init();
+
+    // ── V1.2 Platform Detection ─────────────────────────────
+    let platform_config = Platform::get_config();
+    Platform::print_banner(&platform_config);
     
     tracing::info!("Starting SOLNET V2.1 Enterprise Release...");
+
+    // Initialize battery guard (V1.2)
+    let battery_guard = Arc::new(BatteryGuard::new(platform_config.battery_mode));
 
     let cfg_clone = cfg.clone();
     let cfg_clone2 = cfg.clone();
@@ -103,6 +115,24 @@ async fn main() -> Result<()> {
     let peer_registry_clone = peer_registry.clone();
     let daily_salt_clone = daily_salt.clone();
     let peer_registry_clone2 = peer_registry.clone();
+
+    // ── V1.2 Mobile Peer Registration ───────────────────────
+    if !platform_config.p2p_enabled {
+        let mut client = mobile_peer::MobilePeerClient::new(
+            format!("{}", uuid::Uuid::new_v4()),
+            platform_config.platform_name.to_string(),
+        );
+        match client.register().await {
+            Ok(peer) => {
+                tracing::info!("Mobile registered with peer: {}", peer);
+            }
+            Err(e) => {
+                tracing::warn!(
+                    "Mobile registration failed: {}. Using direct fallback.", e
+                );
+            }
+        }
+    }
 
     // Spawn security cleanup task
     let ap_cleanup = attack_prevention.clone();
@@ -176,6 +206,7 @@ async fn main() -> Result<()> {
     });
 
     // Spawn HTTP RPC proxy and P2P node concurrently
+    let battery_guard_clone = battery_guard.clone();
     let rpc_handle = tokio::spawn(async move {
         let node_id = uuid::Uuid::new_v4().to_string();
         if let Err(e) = rpc_proxy::start_rpc_proxy(
@@ -193,13 +224,29 @@ async fn main() -> Result<()> {
             attack_prevention,
             wallet_tracker,
             latency_engine,
+            battery_guard_clone,
         ).await {
             tracing::error!("RPC proxy error: {}", e);
         }
     });
 
+    // Clone platform_config fields for p2p task (can't move PlatformConfig across threads easily)
+    let p2p_enabled = platform_config.p2p_enabled;
+    let p2p_platform_name: &'static str = platform_config.platform_name;
+    let p2p_platform_config = PlatformConfig {
+        max_concurrent_requests: platform_config.max_concurrent_requests,
+        batch_interval: platform_config.batch_interval,
+        p2p_enabled,
+        cache_size_mb: platform_config.cache_size_mb,
+        http_port: platform_config.http_port,
+        p2p_port: platform_config.p2p_port,
+        battery_mode: platform_config.battery_mode,
+        log_level: platform_config.log_level,
+        platform_name: p2p_platform_name,
+    };
+
     let p2p_handle = tokio::spawn(async move {
-        if let Err(e) = p2p::start_p2p_node(cfg_clone2, peer_registry_clone2).await {
+        if let Err(e) = p2p::start_p2p_node(cfg_clone2, peer_registry_clone2, &p2p_platform_config).await {
             tracing::error!("P2P node error: {}", e);
         }
     });

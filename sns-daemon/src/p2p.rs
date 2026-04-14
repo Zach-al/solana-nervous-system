@@ -25,7 +25,23 @@ pub fn get_peer_id(config: &Config) -> String {
 pub async fn start_p2p_node(
     config: Config,
     peer_registry: Arc<DashMap<String, String>>,
+    platform_config: &crate::platform::PlatformConfig,
 ) -> Result<()> {
+    // Skip P2P on mobile — saves battery and data
+    if !platform_config.p2p_enabled {
+        tracing::info!(
+            "P2P mesh disabled on {} — mobile mode",
+            platform_config.platform_name
+        );
+        tracing::info!("Mobile node will use HTTP-only peer discovery");
+        // Mobile nodes skip DHT entirely
+        // They register with bootstrap nodes via HTTP
+        // and get assigned to nearest mesh peer
+        return Ok(());
+    }
+
+    // Desktop: full libp2p DHT as before
+    tracing::info!("Starting full P2P mesh node...");
     let mut swarm = SwarmBuilder::with_new_identity()
         .with_tokio()
         .with_tcp(

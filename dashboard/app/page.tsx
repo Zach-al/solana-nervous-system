@@ -5,6 +5,7 @@ import PerformancePanel from '../components/PerformancePanel';
 import WalletPanel from '../components/WalletPanel';
 import ActivityFeed from '../components/ActivityFeed';
 import BatchHistory from '../components/BatchHistory';
+import MobileNodePanel from '../components/MobileNodePanel';
 import { useEffect, useState } from 'react';
 
 // Load Globe dynamically to avoid SSR issues with Three.js
@@ -63,6 +64,7 @@ export default function Home() {
         <div className="sidebar">
           <WalletPanel />
           <StatsPanel />
+          <MobileNodePanel />
         </div>
         <div className="center-area">
           {/* Mobile-only static globe replacement */}

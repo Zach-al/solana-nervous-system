@@ -1,0 +1,17 @@
+[build.env]
+passthrough = [
+    "SOLANA_RPC_URL",
+    "NODE_NAME",
+    "HTTP_PORT",
+    "LOG_LEVEL",
+    "NODE_WALLET_PUBKEY",
+]
+
+[target.aarch64-linux-android]
+image = "ghcr.io/cross-rs/aarch64-linux-android:edge"
+
+[target.aarch64-unknown-linux-gnu]
+image = "ghcr.io/cross-rs/aarch64-unknown-linux-gnu:edge"
+
+[target.aarch64-apple-ios]
+image = "ghcr.io/cross-rs/aarch64-apple-ios:edge"

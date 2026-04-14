@@ -1,0 +1,19 @@
+[Unit]
+Description=SOLNET Decentralized RPC Node
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/solana-nervous-system/sns-daemon
+ExecStart=/home/pi/solana-nervous-system/sns-daemon/target/release/sns-daemon
+Restart=always
+RestartSec=10
+Environment="SOLANA_RPC_URL=https://api.devnet.solana.com"
+Environment="NODE_NAME=pi-solnet-node"
+Environment="HTTP_PORT=9000"
+Environment="LOG_LEVEL=info"
+
+[Install]
+WantedBy=multi-user.target

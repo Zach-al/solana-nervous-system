@@ -1,18 +1,74 @@
-#!/bin/sh
+#!/bin/bash
 set -e
 
-echo "Downloading SOLNET daemon..."
-# In a real scenario, this would download the binary from GitHub releases
-# curl -L -o /usr/local/bin/sns-daemon https://github.com/yourusername/solana-nervous-system/releases/latest/download/sns-daemon
+REPO="https://github.com/Zach-al/solana-nervous-system"
+BINARY_NAME="sns-daemon"
+VERSION="2.1.0"
 
-echo "Building from source instead for the hackathon demo..."
-if ! command -v cargo >/dev/null 2>&1; then
-    echo "Rust is required but not installed. Please install Rust via rustup."
-    exit 1
+echo "╔══════════════════════════════════════╗"
+echo "║     SOLNET Node Installer v${VERSION}     ║"
+echo "╚══════════════════════════════════════╝"
+echo ""
+
+# Detect OS and architecture
+OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+ARCH=$(uname -m)
+
+echo "Detected: $OS / $ARCH"
+echo ""
+
+# Check Rust is installed
+if ! command -v cargo &> /dev/null; then
+    echo "Installing Rust..."
+    curl --proto '=https' --tlsv1.2 -sSf \
+        https://sh.rustup.rs | sh -s -- -y
+    source "$HOME/.cargo/env"
+    echo "✓ Rust installed"
 fi
 
-git clone https://github.com/yourusername/solana-nervous-system.git
-cd solana-nervous-system/sns-daemon
-cargo build --release
-echo "SOLNET SNS Daemon installed successfully!"
-echo "Run it with: SOLANA_RPC_URL=https://api.devnet.solana.com ./target/release/sns-daemon"
+# Check Rust version
+RUST_VERSION=$(rustc --version | awk '{print $2}')
+echo "Rust version: $RUST_VERSION"
+
+# Clone or update repo
+if [ -d "solana-nervous-system" ]; then
+    echo "Updating existing installation..."
+    cd solana-nervous-system
+    git pull origin main
+else
+    echo "Cloning SOLNET..."
+    git clone "$REPO"
+    cd solana-nervous-system
+fi
+
+# Build for current platform
+echo ""
+echo "Building SOLNET daemon..."
+cd sns-daemon
+
+# Detect if we need special build flags
+if [ "$ARCH" = "aarch64" ] && [ "$OS" = "linux" ]; then
+    echo "Building for ARM64 Linux (Raspberry Pi)..."
+fi
+
+cargo build --release 2>&1 | tail -5
+
+echo ""
+echo "✓ Build complete"
+echo ""
+echo "╔══════════════════════════════════════╗"
+echo "║  SOLNET is ready to run!             ║"
+echo "╚══════════════════════════════════════╝"
+echo ""
+echo "Start your node:"
+echo ""
+echo "  export SOLANA_RPC_URL=https://api.devnet.solana.com"
+echo "  export NODE_WALLET_PUBKEY=<your-solana-address>"
+echo "  export NODE_NAME=my-solnet-node"
+echo "  cargo run --release"
+echo ""
+echo "Your node will join the SOLNET mesh"
+echo "and start earning SOL immediately."
+echo ""
+echo "Dashboard: https://solnet-wheat.vercel.app"
+echo "Docs: $REPO#readme"

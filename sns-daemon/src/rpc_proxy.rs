@@ -53,6 +53,8 @@ pub struct SharedState {
     pub wallet_tracker: Option<Arc<crate::wallet_rewards::WalletRewardTracker>>,
     pub latency_engine: Arc<crate::latency_engine::LatencyEngine>,
     pub config: Config,
+    // V1.2 Mobile Components
+    pub battery_guard: Arc<crate::battery_guard::BatteryGuard>,
 }
 
 pub struct DailySalt {
@@ -92,15 +94,6 @@ impl DailySalt {
     }
 }
 
-#[derive(Serialize)]
-struct HealthResponse {
-    status: &'static str,
-    node_id: String,
-    requests_served: u64,
-    earnings_lamports: u64,
-    uptime_seconds: u64,
-}
-
 // ─────────────────────────────────────────────────────────────
 // Server bootstrap
 // ─────────────────────────────────────────────────────────────
@@ -120,6 +113,7 @@ pub async fn start_rpc_proxy(
     attack_prevention: Arc<crate::attack_prevention::AttackPrevention>,
     wallet_tracker: Option<Arc<crate::wallet_rewards::WalletRewardTracker>>,
     latency_engine: Arc<crate::latency_engine::LatencyEngine>,
+    battery_guard: Arc<crate::battery_guard::BatteryGuard>,
 ) -> Result<()> {
     let stats = Arc::new(Mutex::new(NodeStats {
         node_id: node_id.clone(),
@@ -149,6 +143,7 @@ pub async fn start_rpc_proxy(
         wallet_tracker,
         latency_engine,
         config: config.clone(),
+        battery_guard,
     };
 
     let cors = CorsLayer::new()
@@ -163,6 +158,8 @@ pub async fn start_rpc_proxy(
         .route("/onion", post(onion_handler))
         .route("/performance", get(performance_handler))
         .route("/wallet", get(wallet_handler))
+        .route("/mobile/register", post(mobile_register_handler))
+        .route("/mobile/peers", get(mobile_peers_handler))
         .layer(
             tower::ServiceBuilder::new()
                 .layer(axum::error_handling::HandleErrorLayer::new(|_: tower::BoxError| async {
@@ -238,6 +235,14 @@ async fn rpc_handler(
     let start_instant = std::time::Instant::now();
     let sec_headers = security_headers();
     let client_ip = extract_ip(&headers);
+
+    // ── Mobile Battery Check ───────────────────────────────
+    if !state.battery_guard.should_accept_request() {
+        return (StatusCode::SERVICE_UNAVAILABLE, Json(serde_json::json!({
+            "error": "node throttled — low battery",
+            "retry_after": 30,
+        }))).into_response();
+    }
     
     // ── 0. Host Header Validation ──────────────────────────
     let host = headers.get("host").and_then(|v| v.to_str().ok()).unwrap_or("unknown");
@@ -535,14 +540,16 @@ async fn root_get_handler() -> impl IntoResponse {
 async fn health_handler(State(state): State<SharedState>) -> impl IntoResponse {
     let stats = state.stats.lock().await;
     let uptime = (Utc::now() - stats.started_at).num_seconds() as u64;
+    let battery = state.battery_guard.get_status();
 
-    let mut r = Json(HealthResponse {
-        status: "ok",
-        node_id: stats.node_id.clone(),
-        requests_served: stats.requests_served,
-        earnings_lamports: stats.earnings_lamports,
-        uptime_seconds: uptime,
-    })
+    let mut r = Json(serde_json::json!({
+        "status": "ok",
+        "node_id": stats.node_id,
+        "requests_served": stats.requests_served,
+        "earnings_lamports": stats.earnings_lamports,
+        "uptime_seconds": uptime,
+        "battery": battery,
+    }))
     .into_response();
     r.headers_mut().extend(security_headers());
     r
@@ -555,6 +562,7 @@ async fn health_handler(State(state): State<SharedState>) -> impl IntoResponse {
 async fn stats_handler(State(state): State<SharedState>) -> impl IntoResponse {
     let stats = state.stats.lock().await;
     let uptime = (Utc::now() - stats.started_at).num_seconds() as u64;
+    let battery = state.battery_guard.get_status();
 
     let mut r = Json(serde_json::json!({
         "node_id": stats.node_id,
@@ -566,9 +574,65 @@ async fn stats_handler(State(state): State<SharedState>) -> impl IntoResponse {
         "started_at": stats.started_at,
         "peer_count": stats.peer_count,
         "rpc_url": state.solana_rpc_url,
-        "status": "online"
+        "status": "online",
+        "battery": battery,
     }))
     .into_response();
+    r.headers_mut().extend(security_headers());
+    r
+}
+
+// ─────────────────────────────────────────────────────────────
+// Mobile Registration Endpoints (V1.2)
+// ─────────────────────────────────────────────────────────────
+
+async fn mobile_register_handler(
+    State(state): State<SharedState>,
+    Json(payload): Json<serde_json::Value>,
+) -> impl IntoResponse {
+    let node_id = payload["node_id"].as_str().unwrap_or("unknown");
+    let platform = payload["platform"].as_str().unwrap_or("unknown");
+
+    tracing::info!("Mobile node registered: {} ({})", node_id, platform);
+
+    // Register mobile peer in shared peer registry
+    state.peer_registry.insert(
+        node_id.to_string(),
+        format!("mobile:{}", platform),
+    );
+
+    // Assign this bootstrap node as their peer
+    // In production: pick least loaded desktop node
+    let mut r = Json(serde_json::json!({
+        "status": "registered",
+        "assigned_peer": "https://solnet-production.up.railway.app",
+        "node_id": node_id,
+        "platform": platform,
+        "message": "Route all requests to assigned_peer",
+    })).into_response();
+    r.headers_mut().extend(security_headers());
+    r
+}
+
+async fn mobile_peers_handler(
+    State(state): State<SharedState>,
+) -> impl IntoResponse {
+    let desktop_peers: Vec<serde_json::Value> = state
+        .peer_registry
+        .iter()
+        .filter(|e| !e.value().starts_with("mobile:"))
+        .map(|e| serde_json::json!({
+            "peer_id": e.key().clone(),
+            "endpoint": e.value().clone(),
+        }))
+        .collect();
+
+    let count = desktop_peers.len();
+    let mut r = Json(serde_json::json!({
+        "peers": desktop_peers,
+        "count": count,
+        "bootstrap": "https://solnet-production.up.railway.app",
+    })).into_response();
     r.headers_mut().extend(security_headers());
     r
 }
