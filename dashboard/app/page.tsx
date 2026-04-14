@@ -45,7 +45,7 @@ export default function Home() {
             LIVE NETWORKS
           </div>
           <div style={{ fontFamily: 'var(--font-technical)', fontSize: '11px', color: 'var(--text-dim)' }}>
-            v2.1.0-STITCH
+            v2.1.0
           </div>
         </div>
       </header>

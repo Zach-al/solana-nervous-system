@@ -28,6 +28,13 @@ To earn SOLNET rewards, you must configure a node wallet:
 *   **`NODE_WALLET_PUBKEY`**: Your Solana public key.
 *   **`EARNINGS_MODE`**: `Accumulate` (hold in contract) or `AutoClaim` (settle daily).
 
+### Claiming Rewards
+Rewards are claimed by "Settling" your currently accumulated receipts to the Solana Mainnet.
+1.  **Automatic:** The daemon settles batches every hour by default.
+2.  **Manual:** Click **[CLAIM_ALL]** in the Dashboard's Economic Control panel. 
+    *   This triggers an immediate zero-knowledge proof generation and settlement transaction.
+    *   Once confirmed, your SOLNET tokens are minted directly to your associated token account.
+
 ## 3. Operations & Monitoring
 
 ### Local Health Check
