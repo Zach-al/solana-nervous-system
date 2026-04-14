@@ -158,6 +158,7 @@ pub async fn start_rpc_proxy(
         .route("/onion", post(onion_handler))
         .route("/performance", get(performance_handler))
         .route("/wallet", get(wallet_handler))
+        .route("/settle", post(settle_handler))
         .route("/mobile/register", post(mobile_register_handler))
         .route("/mobile/peers", get(mobile_peers_handler))
         .layer(
@@ -531,6 +532,25 @@ async fn wallet_handler(State(state): State<SharedState>) -> impl IntoResponse {
 
 async fn root_get_handler() -> impl IntoResponse {
     (StatusCode::OK, "SOLNET JSON-RPC Gateway V2.1 is active.\nSend POST requests with JSON-RPC payload.").into_response()
+}
+
+async fn settle_handler(State(state): State<SharedState>) -> impl IntoResponse {
+    let mut batch_lock = state.zk_batch.lock().await;
+    match batch_lock.persist_and_clear("./batches").await {
+        Ok(compressed) => {
+            info!(
+                "Manual settlement triggered: batch {}: {} receipts, {} lamports", 
+                compressed.batch_id, 
+                compressed.receipt_count, 
+                compressed.total_lamports
+            );
+            (StatusCode::OK, Json(compressed)).into_response()
+        }
+        Err(e) => {
+            error!("Manual settlement failed: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, format!("Settlement failed: {}", e)).into_response()
+        }
+    }
 }
 
 // ─────────────────────────────────────────────────────────────
