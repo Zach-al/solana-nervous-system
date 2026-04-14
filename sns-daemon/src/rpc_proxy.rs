@@ -185,7 +185,7 @@ pub async fn start_rpc_proxy(
 // Security headers injected on every response
 // ─────────────────────────────────────────────────────────────
 
-fn security_headers() -> HeaderMap {
+pub fn security_headers() -> HeaderMap {
     let mut headers = HeaderMap::new();
     headers.insert("X-Content-Type-Options", HeaderValue::from_static("nosniff"));
     headers.insert("X-Frame-Options", HeaderValue::from_static("DENY"));

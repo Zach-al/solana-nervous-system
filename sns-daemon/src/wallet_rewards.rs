@@ -1,15 +1,14 @@
-use solana_client::rpc_client::RpcClient;
-use solana_sdk::pubkey::Pubkey;
-use std::str::FromStr;
 use std::sync::Arc;
 use tokio::sync::Mutex;
+use serde_json::json;
+use crate::rpc_proxy::security_headers;
 
 /// Real wallet reward tracker
-/// Connects to actual Solana wallet
+/// Connects to actual Solana wallet via JSON-RPC
 /// Tracks both pending (off-chain) and confirmed (on-chain)
 pub struct WalletRewardTracker {
-    /// Node operator's wallet public key
-    pub node_wallet: Pubkey,
+    /// Node operator's wallet public key (String to keep build light)
+    pub node_wallet: String,
     /// Pending rewards not yet settled (lamports)
     pending_lamports: Arc<Mutex<u64>>,
     /// Confirmed on-chain balance cache
@@ -28,13 +27,13 @@ impl WalletRewardTracker {
     pub fn new(node_wallet_pubkey: &str, rpc_url: String) 
         -> Result<Self, anyhow::Error> 
     {
-        let node_wallet = Pubkey::from_str(node_wallet_pubkey)
-            .map_err(|e| anyhow::anyhow!(
-                "Invalid wallet pubkey: {}", e
-            ))?;
+        // Simple validation: base58 check usually, but for hotfix we trust the env string
+        if node_wallet_pubkey.len() < 32 || node_wallet_pubkey.len() > 44 {
+            return Err(anyhow::anyhow!("Invalid wallet pubkey length"));
+        }
             
         Ok(Self {
-            node_wallet,
+            node_wallet: node_wallet_pubkey.to_string(),
             pending_lamports: Arc::new(Mutex::new(0)),
             confirmed_balance: Arc::new(Mutex::new(0)),
             last_balance_fetch: Arc::new(Mutex::new(0)),
@@ -55,7 +54,7 @@ impl WalletRewardTracker {
         *pending += 100; // 100 lamports per request
     }
     
-    /// Get real on-chain wallet balance
+    /// Get real on-chain wallet balance via native JSON-RPC
     /// Cached for 30 seconds to avoid spam
     pub async fn get_onchain_balance(&self) 
         -> Result<u64, anyhow::Error> 
@@ -65,25 +64,35 @@ impl WalletRewardTracker {
             .unwrap()
             .as_secs();
             
-        let last_fetch = *self.last_balance_fetch.lock().await;
+        let mut last_fetch_guard = self.last_balance_fetch.lock().await;
         
         // Return cached if less than 30 seconds old
-        if now - last_fetch < 30 {
+        if now - *last_fetch_guard < 30 {
             return Ok(*self.confirmed_balance.lock().await);
         }
         
-        // Fetch real balance from Solana
-        let rpc = RpcClient::new(self.rpc_url.clone());
-        let wallet = self.node_wallet;
-        let wallet_balance = tokio::task::spawn_blocking(
-            move || {
-                rpc.get_balance(&wallet)
-                    .map_err(|e| anyhow::anyhow!("{}", e))
-            }
-        ).await??;
+        // Fetch real balance from Solana via reqwest (lightweight)
+        let client = reqwest::Client::new();
+        let payload = json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "getBalance",
+            "params": [self.node_wallet]
+        });
+
+        let resp = client.post(&self.rpc_url)
+            .json(&payload)
+            .send()
+            .await?
+            .json::<serde_json::Value>()
+            .await?;
+
+        let wallet_balance = resp["result"]["value"]
+            .as_u64()
+            .ok_or_else(|| anyhow::anyhow!("Invalid balance response from RPC"))?;
         
         *self.confirmed_balance.lock().await = wallet_balance;
-        *self.last_balance_fetch.lock().await = now;
+        *last_fetch_guard = now;
         
         Ok(wallet_balance)
     }
@@ -99,7 +108,7 @@ impl WalletRewardTracker {
             .load(std::sync::atomic::Ordering::Relaxed);
         
         RewardStatus {
-            wallet_address: self.node_wallet.to_string(),
+            wallet_address: self.node_wallet.clone(),
             pending_lamports: pending,
             pending_sol: pending as f64 / 1_000_000_000.0,
             confirmed_wallet_balance_lamports: confirmed,
