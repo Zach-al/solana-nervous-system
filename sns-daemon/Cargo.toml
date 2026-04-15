@@ -19,7 +19,7 @@ dashmap = "6.0.1"
 dotenv = "0.15.0"
 futures = "0.3.29"
 hex = "0.4.3"
-libp2p = { version = "0.52.4", features = ["tcp", "dns", "websocket", "noise", "yamux", "kad", "identify", "ping", "macros", "tokio"] }
+libp2p = { version = "0.52.4", features = ["tcp", "dns", "websocket", "noise", "yamux", "kad", "identify", "ping", "macros", "tokio", "relay", "autonat", "dcutr", "quic"] }
 reqwest = { version = "0.11.22", features = ["json", "rustls-tls"] }
 serde = { version = "1.0.190", features = ["derive"] }
 serde_json = "1.0.108"

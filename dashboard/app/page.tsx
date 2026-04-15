@@ -8,6 +8,7 @@ import BatchHistory from '../components/BatchHistory';
 import MobileNodePanel from '../components/MobileNodePanel';
 import EarningsPanel from '../components/EarningsPanel';
 import ActivityFeed from '../components/ActivityFeed';
+import MeshPanel from '../components/MeshPanel';
 import { useEffect, useState } from 'react';
 
 // Load Globe dynamically to avoid SSR issues with Three.js
@@ -59,6 +60,7 @@ export default function Home() {
             INFRASTRUCTURE <span>[HEALTH]</span>
           </div>
           <div className="panel-content">
+            <MeshPanel />
             <StatsPanel />
             <ActivityFeed />
           </div>

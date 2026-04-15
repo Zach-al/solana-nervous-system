@@ -68,6 +68,12 @@ pub struct RateLimiter {
     requests: Arc<DashMap<String, (u64, u64)>>,
 }
 
+impl Default for RateLimiter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl RateLimiter {
     pub fn new() -> Self {
         Self {
@@ -218,6 +224,12 @@ pub struct CircuitBreaker {
     last_failure: Arc<std::sync::Mutex<u64>>,
     threshold: u32,
     recovery_secs: u64,
+}
+
+impl Default for CircuitBreaker {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl CircuitBreaker {

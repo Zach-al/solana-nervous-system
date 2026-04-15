@@ -1,116 +1,238 @@
 use crate::config::Config;
 use anyhow::Result;
 use libp2p::{
+    autonat, dcutr, identify,
     futures::StreamExt,
     kad::{self, store::MemoryStore},
-    noise, tcp, yamux,
-    swarm::{SwarmEvent, NetworkBehaviour},
-    SwarmBuilder,
+    noise, tcp, yamux, relay,
+    swarm::{NetworkBehaviour, SwarmEvent},
+    SwarmBuilder, Multiaddr, PeerId
 };
-use tracing::{info, warn};
+use tracing::{info, warn, debug};
 use std::sync::Arc;
 use dashmap::DashMap;
+use std::str::FromStr;
+use std::time::Duration;
+
+use std::sync::atomic::Ordering;
 
 #[derive(NetworkBehaviour)]
 struct SnsNodeBehaviour {
     kademlia: kad::Behaviour<MemoryStore>,
+    identify: identify::Behaviour,
+    autonat: autonat::Behaviour,
+    relay_client: relay::client::Behaviour,
+    relay_server: relay::Behaviour,
+    dcutr: libp2p::swarm::behaviour::toggle::Toggle<dcutr::Behaviour>,
 }
 
 #[allow(dead_code)]
 pub fn get_peer_id(config: &Config) -> String {
-    // Generate a deterministic placeholder — real peer ID comes from swarm keypair
     format!("sns-{}", config.node_name)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn start_p2p_node(
     config: Config,
     peer_registry: Arc<DashMap<String, String>>,
     platform_config: &crate::platform::PlatformConfig,
+    connected_peers: Arc<std::sync::atomic::AtomicUsize>,
+    hole_punch_attempts: Arc<std::sync::atomic::AtomicUsize>,
+    hole_punch_successes: Arc<std::sync::atomic::AtomicUsize>,
+    nat_status: Arc<tokio::sync::Mutex<String>>,
+    node_multiaddrs: Arc<tokio::sync::Mutex<Vec<String>>>,
 ) -> Result<()> {
-    // Skip P2P on mobile — saves battery and data
-    if !platform_config.p2p_enabled {
-        tracing::info!(
-            "P2P mesh disabled on {} — mobile mode",
-            platform_config.platform_name
+    tracing::info!("Starting native Web3 Libp2p mesh node...");
+
+    // Print banners
+    if config.is_relay {
+        println!("╔══════════════════════════════════════╗");
+        println!("║     SOLNET RELAY NODE ACTIVE         ║");
+        println!("║  Circuit Relay v2 accepting peers    ║");
+        println!("║  DCUtR hole punching enabled         ║");
+        println!("║  Max reservations: {:<17} ║", config.relay_max_reservations);
+        println!("╚══════════════════════════════════════╝");
+    } else if config.bootstrap_nodes.is_empty() {
+        tracing::warn!(
+            "No bootstrap peers configured. \n\
+             Node is isolated from mesh.\n\
+             Set SOLNET_BOOTSTRAP to join the network.\n\
+             Example: SOLNET_BOOTSTRAP=/dns4/solnet-production.up.railway.app/tcp/9001/p2p/<peer-id>"
         );
-        tracing::info!("Mobile node will use HTTP-only peer discovery");
-        // Mobile nodes skip DHT entirely
-        // They register with bootstrap nodes via HTTP
-        // and get assigned to nearest mesh peer
-        return Ok(());
     }
 
-    // Desktop: full libp2p DHT as before
-    tracing::info!("Starting full P2P mesh node...");
-    let mut swarm = SwarmBuilder::with_new_identity()
+    // Create or load the keypair
+    let local_key = crate::identity::NodeIdentity::load_or_generate();
+    let local_peer_id = PeerId::from(local_key.public());
+    info!("🔑 Local Peer ID: {}", local_peer_id);
+
+    // Provide the platform constraint (mobile uses lower resource limits)
+    let is_mobile = !platform_config.p2p_enabled;
+
+    // Build the swarm
+    let mut swarm = SwarmBuilder::with_existing_identity(local_key.clone())
         .with_tokio()
         .with_tcp(
             tcp::Config::default(),
             (noise::Config::new, noise::Config::new),
             yamux::Config::default,
         )?
-        .with_behaviour(|key| {
+        .with_quic()
+        .with_relay_client(noise::Config::new, yamux::Config::default)?
+        .with_behaviour(|key, relay_client| {
             let peer_id = key.public().to_peer_id();
-            info!("🔑 Local Peer ID: {}", peer_id);
 
+            // Kademlia
             let store = MemoryStore::new(peer_id);
-            let kademlia = kad::Behaviour::new(peer_id, store);
+            let mut kademlia = kad::Behaviour::new(peer_id, store);
+            kademlia.set_mode(Some(kad::Mode::Server));
 
-            Ok(SnsNodeBehaviour { kademlia })
+            // Identify
+            let identify = identify::Behaviour::new(identify::Config::new(
+                "/solnet/2.1.0".into(),
+                key.public(),
+            ));
+
+            // AutoNAT (detect Symmetric NAT vs Full Cone)
+            let autonat = autonat::Behaviour::new(peer_id, autonat::Config::default());
+
+            // Relay Server (only fully functional if config.is_relay)
+            let mut relay_config = relay::Config::default();
+            if !config.is_relay || is_mobile {
+                // If not designated as relay, deny relay circuits to save battery/bandwidth
+                relay_config.max_circuits = 0;
+                relay_config.max_circuits_per_peer = 0;
+                relay_config.max_reservations = 0;
+            } else {
+                relay_config.max_circuits = config.relay_max_circuits;
+                relay_config.max_reservations = config.relay_max_reservations;
+            }
+            let relay_server = relay::Behaviour::new(peer_id, relay_config);
+
+            // DCUtR (Hole Punching protocol)
+            let dcutr = if config.enable_dcutr {
+                libp2p::swarm::behaviour::toggle::Toggle::from(Some(dcutr::Behaviour::new(peer_id)))
+            } else {
+                libp2p::swarm::behaviour::toggle::Toggle::from(None)
+            };
+
+            Ok(SnsNodeBehaviour {
+                kademlia,
+                identify,
+                autonat,
+                relay_client,
+                relay_server,
+                dcutr,
+            })
         })?
+        .with_swarm_config(|c| c.with_idle_connection_timeout(Duration::from_secs(60)))
         .build();
 
-    // Listen on the configured P2P port
-    let listen_addr: libp2p::Multiaddr = format!("/ip4/0.0.0.0/tcp/{}", config.p2p_port)
-        .parse()
-        .expect("valid multiaddr");
+    // Listen addresses (TCP + QUIC)
+    let tcp_addr: Multiaddr = format!("/ip4/0.0.0.0/tcp/{}", config.p2p_port).parse()?;
+    let quic_addr: Multiaddr = format!("/ip4/0.0.0.0/udp/{}/quic-v1", config.p2p_port).parse()?;
+    swarm.listen_on(tcp_addr)?;
+    swarm.listen_on(quic_addr)?;
 
-    swarm.listen_on(listen_addr)?;
+    info!("🕸️  P2P mesh node listening on port {}", config.p2p_port);
+    info!("🔗 Node Multiaddr (TCP): /ip4/<your-ip>/tcp/{}/p2p/{}", config.p2p_port, local_peer_id);
+    info!("🔗 Node Multiaddr (UDP): /ip4/<your-ip>/udp/{}/quic-v1/p2p/{}", config.p2p_port, local_peer_id);
 
-    info!("🕸️  P2P mesh node starting on port {}", config.p2p_port);
-
-    // Drive the swarm event loop
-    loop {
-        match swarm.next().await {
-            Some(SwarmEvent::NewListenAddr { address, .. }) => {
-                info!("📡 Listening on: {}", address);
+    // Bootstrap Connection
+    for addr_str in &config.bootstrap_nodes {
+        if let Ok(addr) = Multiaddr::from_str(addr_str) {
+            info!("Dialing bootstrap node: {}", addr);
+            if let Err(e) = swarm.dial(addr.clone()) {
+                warn!("Failed to dial {}: {:?}", addr, e);
             }
-            Some(SwarmEvent::ConnectionEstablished { peer_id, endpoint, .. }) => {
-                info!("✅ Peer connected: {}", peer_id);
+            
+            // Extract peer_id from multiaddr to add to kademlia
+            if let Some(libp2p::core::multiaddr::Protocol::P2p(peer_id)) = addr.iter().last() {
+                swarm.behaviour_mut().kademlia.add_address(&peer_id, addr.clone());
+            }
+        } else {
+            warn!("Invalid multiaddr: {}", addr_str);
+        }
+    }
+
+    if !config.bootstrap_nodes.is_empty() {
+        if let Err(e) = swarm.behaviour_mut().kademlia.bootstrap() {
+            warn!("Failed to start Kademlia bootstrap: {:?}", e);
+        }
+    }
+
+    // Drive the swarm
+    loop {
+        match swarm.select_next_some().await {
+            SwarmEvent::NewListenAddr { address, .. } => {
+                info!("📡 Listening on: {}", address);
+                node_multiaddrs.lock().await.push(address.to_string());
+            }
+            SwarmEvent::ConnectionEstablished { peer_id, endpoint, .. } => {
+                info!("✅ Peer connected: {} via {:?}", peer_id, endpoint.get_remote_address());
+                connected_peers.fetch_add(1, Ordering::Relaxed);
                 let addr = endpoint.get_remote_address().to_string();
                 if let Some(ip) = extract_ip_from_multiaddr(&addr) {
                     peer_registry.insert(
                         peer_id.to_string(),
-                        format!("http://{}:{}", ip, 9000) // Defaulting to 9000 for demo
+                        format!("http://{}:{}", ip, config.http_port)
                     );
-                    info!("📍 Registered {} at {}", peer_id, ip);
                 }
             }
-            Some(SwarmEvent::ConnectionClosed { peer_id, cause, .. }) => {
+            SwarmEvent::ConnectionClosed { peer_id, cause, .. } => {
+                connected_peers.fetch_sub(1, Ordering::Relaxed);
                 match cause {
-                    Some(err) => info!("❌ Peer disconnected: {} (reason: {})", peer_id, err),
-                    None => info!("❌ Peer disconnected: {}", peer_id),
+                    Some(err) => debug!("❌ Peer disconnected: {} (reason: {})", peer_id, err),
+                    None => debug!("❌ Peer disconnected: {}", peer_id),
                 }
             }
-            Some(SwarmEvent::Behaviour(SnsNodeBehaviourEvent::Kademlia(event))) => {
-                info!("🗺️  Kademlia routing event: {:?}", event);
+            SwarmEvent::Behaviour(SnsNodeBehaviourEvent::Kademlia(event)) => {
+                debug!("🗺️  Kademlia event: {:?}", event);
             }
-            Some(SwarmEvent::IncomingConnection { local_addr, send_back_addr, .. }) => {
-                info!("🔗 Incoming connection from {} on {}", send_back_addr, local_addr);
+            SwarmEvent::Behaviour(SnsNodeBehaviourEvent::Identify(identify::Event::Received { peer_id, info })) => {
+                for addr in info.listen_addrs {
+                    swarm.behaviour_mut().kademlia.add_address(&peer_id, addr);
+                }
             }
-            Some(SwarmEvent::OutgoingConnectionError { peer_id, error, .. }) => {
+            SwarmEvent::Behaviour(SnsNodeBehaviourEvent::Identify(_)) => {}
+            SwarmEvent::Behaviour(SnsNodeBehaviourEvent::Autonat(autonat::Event::StatusChanged { old, new })) => {
+                info!("🔄 AutoNAT status changed from {:?} to {:?}", old, new);
+                let status_str = match new {
+                    autonat::NatStatus::Public(_) => "PublicAddress".to_string(),
+                    autonat::NatStatus::Private => "Private".to_string(),
+                    autonat::NatStatus::Unknown => "Unknown".to_string(),
+                };
+                *nat_status.lock().await = status_str;
+            }
+            SwarmEvent::Behaviour(SnsNodeBehaviourEvent::Autonat(_)) => {}
+            SwarmEvent::Behaviour(SnsNodeBehaviourEvent::Dcutr(event)) => {
+                match event {
+                    dcutr::Event::RemoteInitiatedDirectConnectionUpgrade { remote_peer_id, remote_relayed_addr } => {
+                        info!("🔥 DCUtR upgrade initiated by {} via {}", remote_peer_id, remote_relayed_addr);
+                        hole_punch_attempts.fetch_add(1, Ordering::Relaxed);
+                    }
+                    dcutr::Event::InitiatedDirectConnectionUpgrade { remote_peer_id, local_relayed_addr } => {
+                        info!("🔥 DCUtR upgrade initiated to {} via {}", remote_peer_id, local_relayed_addr);
+                        hole_punch_attempts.fetch_add(1, Ordering::Relaxed);
+                    }
+                    dcutr::Event::DirectConnectionUpgradeSucceeded { remote_peer_id } => {
+                        info!("🚀 Hole punch successful! Direct connection to {}", remote_peer_id);
+                        hole_punch_successes.fetch_add(1, Ordering::Relaxed);
+                    }
+                    dcutr::Event::DirectConnectionUpgradeFailed { remote_peer_id, error } => {
+                        warn!("⚠️ Hole punch failed to {}: {:?}", remote_peer_id, error);
+                    }
+                }
+            }
+            SwarmEvent::OutgoingConnectionError { peer_id, error, .. } => {
                 warn!("⚠️  Outgoing connection error to {:?}: {}", peer_id, error);
             }
-            Some(_) => {}
-            None => break,
+            _ => {}
         }
     }
-
-    Ok(())
 }
 
 fn extract_ip_from_multiaddr(addr: &str) -> Option<String> {
-    // Basic parser for /ip4/x.x.x.x/...
     if addr.contains("/ip4/") {
         let parts: Vec<&str> = addr.split("/ip4/").collect();
         if parts.len() > 1 {
@@ -120,4 +242,3 @@ fn extract_ip_from_multiaddr(addr: &str) -> Option<String> {
     }
     None
 }
-

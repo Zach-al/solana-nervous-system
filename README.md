@@ -24,6 +24,49 @@
 
 ---
 
+## P2P Mesh & NAT Traversal
+
+SOLNET uses native libp2p — no VPNs, no TURN servers,
+no centralized infrastructure.
+
+### How nodes find each other
+
+1. New node starts and connects to bootstrap relay
+2. AutoNAT probes determine NAT type
+3. Kademlia DHT propagates peer routing tables
+4. DCUtR hole punching upgrades relay to direct connection
+5. Result: direct peer-to-peer connection even behind NAT
+
+### Transport stack
+
+TCP + QUIC run simultaneously on port 9001:
+- QUIC (UDP): faster, better for mobile networks
+- TCP: fallback for networks that block UDP
+- Noise protocol: all connections encrypted
+- Yamux: connection multiplexing
+
+### Connect to the mesh
+
+```bash
+export SOLNET_BOOTSTRAP="/dns4/solnet-production.up.railway.app/tcp/9001/p2p/<RELAY_PEER_ID>"
+cargo run --release
+```
+
+Watch hole punching in real time:
+```bash
+RUST_LOG=debug cargo run --release 2>&1 | grep -E "DCUtR|NAT|relay"
+```
+
+### NAT compatibility
+
+| NAT Type | Direct Connection | Via Relay |
+|----------|-------------------|-----------|
+| Full Cone | ✅ Direct | N/A |
+| Restricted Cone | ✅ via DCUtR | Fallback |
+| Port Restricted | ✅ via DCUtR | Fallback |
+| Symmetric | ⚠️ Hard | ✅ Relay |
+| No NAT (server) | ✅ Direct | N/A |
+
 ## The Problem
 
 **Solana's infrastructure has a centralization crisis.**

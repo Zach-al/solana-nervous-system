@@ -16,6 +16,12 @@ pub struct PaymentReceipt {
     pub node_signature: String,
 }
 
+impl Default for ZkReceiptBatch {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ZkReceiptBatch {
     pub fn new() -> Self {
         Self {

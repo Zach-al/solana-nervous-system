@@ -136,7 +136,7 @@ fn build_cache_key(
     method: &str, 
     params: &serde_json::Value
 ) -> String {
-    format!("{}:{}", method, params.to_string())
+    format!("{}:{}", method, params)
 }
 
 impl LatencyEngine {

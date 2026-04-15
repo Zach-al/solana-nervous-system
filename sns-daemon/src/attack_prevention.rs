@@ -20,6 +20,12 @@ struct IpRecord {
     last_seen: u64,
 }
 
+impl Default for AttackPrevention {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AttackPrevention {
     pub fn new() -> Self {
         Self {

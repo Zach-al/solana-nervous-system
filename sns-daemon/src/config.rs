@@ -15,6 +15,11 @@ pub struct Config {
     pub max_concurrent_requests: usize,
     pub rate_limit_per_min: u64,
     pub node_wallet_pubkey: String,
+    pub is_relay: bool,
+    pub relay_max_reservations: usize,
+    pub relay_max_circuits: usize,
+    pub enable_dcutr: bool,
+    pub bootstrap_nodes: Vec<String>,
 }
 
 impl Config {
@@ -40,6 +45,33 @@ impl Config {
             .unwrap_or(100)
             .max(10); // Floor of 10 as per user instruction
 
+        let is_relay = env::var("SOLNET_IS_RELAY")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(false);
+
+        let bootstrap_nodes = env::var("SOLNET_BOOTSTRAP")
+            .unwrap_or_default()
+            .split(',')
+            .filter(|s| !s.trim().is_empty())
+            .map(|s| s.trim().to_string())
+            .collect();
+
+        let relay_max_reservations = env::var("RELAY_MAX_RESERVATIONS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(128);
+
+        let relay_max_circuits = env::var("RELAY_MAX_CIRCUITS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(64);
+
+        let enable_dcutr = env::var("SOLNET_DCUTR")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(true);
+
         Self {
             solana_rpc_url: env::var("SOLANA_RPC_URL")
                 .unwrap_or_else(|_| "https://api.devnet.solana.com".to_string()),
@@ -59,6 +91,11 @@ impl Config {
             max_concurrent_requests: max_concurrent,
             rate_limit_per_min: rate_limit,
             node_wallet_pubkey: env::var("NODE_WALLET_PUBKEY").unwrap_or_default(),
+            is_relay,
+            relay_max_reservations,
+            relay_max_circuits,
+            enable_dcutr,
+            bootstrap_nodes,
         }
     }
 }

@@ -55,11 +55,23 @@ pub struct SharedState {
     pub config: Config,
     // V1.2 Mobile Components
     pub battery_guard: Arc<crate::battery_guard::BatteryGuard>,
+    // P2P Mesh Metrics & NAT
+    pub connected_peers: Arc<std::sync::atomic::AtomicUsize>,
+    pub hole_punch_attempts: Arc<std::sync::atomic::AtomicUsize>,
+    pub hole_punch_successes: Arc<std::sync::atomic::AtomicUsize>,
+    pub nat_status: Arc<Mutex<String>>,
+    pub node_multiaddrs: Arc<Mutex<Vec<String>>>,
 }
 
 pub struct DailySalt {
     salt: Arc<std::sync::Mutex<String>>,
     date: Arc<std::sync::Mutex<String>>,
+}
+
+impl Default for DailySalt {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl DailySalt {
@@ -98,6 +110,7 @@ impl DailySalt {
 // Server bootstrap
 // ─────────────────────────────────────────────────────────────
 
+#[allow(clippy::too_many_arguments)]
 pub async fn start_rpc_proxy(
     config: Config, 
     node_id: String, 
@@ -114,6 +127,11 @@ pub async fn start_rpc_proxy(
     wallet_tracker: Option<Arc<crate::wallet_rewards::WalletRewardTracker>>,
     latency_engine: Arc<crate::latency_engine::LatencyEngine>,
     battery_guard: Arc<crate::battery_guard::BatteryGuard>,
+    connected_peers: Arc<std::sync::atomic::AtomicUsize>,
+    hole_punch_attempts: Arc<std::sync::atomic::AtomicUsize>,
+    hole_punch_successes: Arc<std::sync::atomic::AtomicUsize>,
+    nat_status: Arc<Mutex<String>>,
+    node_multiaddrs: Arc<Mutex<Vec<String>>>,
 ) -> Result<()> {
     let stats = Arc::new(Mutex::new(NodeStats {
         node_id: node_id.clone(),
@@ -144,6 +162,11 @@ pub async fn start_rpc_proxy(
         latency_engine,
         config: config.clone(),
         battery_guard,
+        connected_peers,
+        hole_punch_attempts,
+        hole_punch_successes,
+        nat_status,
+        node_multiaddrs,
     };
 
     let cors = CorsLayer::new()
@@ -155,6 +178,7 @@ pub async fn start_rpc_proxy(
         .route("/", post(rpc_handler).get(root_get_handler))
         .route("/health", get(health_handler))
         .route("/stats", get(stats_handler))
+        .route("/mesh/status", get(mesh_status_handler))
         .route("/onion", post(onion_handler))
         .route("/performance", get(performance_handler))
         .route("/wallet", get(wallet_handler))
@@ -477,7 +501,7 @@ async fn onion_handler(
                     next_hop: peeled.next_hop.clone(),
                 };
                 
-                match client.post(&format!("{}/onion", next_hop_addr))
+                match client.post(format!("{}/onion", next_hop_addr))
                     .json(&forward_payload)
                     .send()
                     .await 
@@ -532,6 +556,54 @@ async fn wallet_handler(State(state): State<SharedState>) -> impl IntoResponse {
 
 async fn root_get_handler() -> impl IntoResponse {
     (StatusCode::OK, "SOLNET JSON-RPC Gateway V2.1 is active.\nSend POST requests with JSON-RPC payload.").into_response()
+}
+
+#[derive(Serialize)]
+pub struct MeshStatusResponse {
+    pub peer_id: String,
+    pub multiaddrs: Vec<String>,
+    pub nat_status: String,
+    pub is_relay: bool,
+    pub relay_reservations: usize, // Approximated or queried later
+    pub connected_peers: usize,
+    pub bootstrap_peers: Vec<String>,
+    pub dcutr_enabled: bool,
+    pub transport: String,
+    pub hole_punching_attempts: usize,
+    pub hole_punching_successes: usize,
+    pub mesh_version: String,
+}
+
+async fn mesh_status_handler(State(state): State<SharedState>) -> impl IntoResponse {
+    let nat_status = state.nat_status.lock().await.clone();
+    let multiaddrs = state.node_multiaddrs.lock().await.clone();
+    let connected_peers = state.connected_peers.load(Ordering::Relaxed);
+    let hole_punching_attempts = state.hole_punch_attempts.load(Ordering::Relaxed);
+    let hole_punching_successes = state.hole_punch_successes.load(Ordering::Relaxed);
+    
+    // Extract Peer ID from the first multiaddr if available, else static
+    let peer_id = multiaddrs.iter()
+        .find(|addr| addr.contains("/p2p/"))
+        .and_then(|addr| addr.split("/p2p/").last())
+        .unwrap_or("Unknown")
+        .to_string();
+
+    let response = MeshStatusResponse {
+        peer_id,
+        multiaddrs,
+        nat_status,
+        is_relay: state.config.is_relay,
+        relay_reservations: connected_peers, // Best effort proxy for relay load
+        connected_peers,
+        bootstrap_peers: state.config.bootstrap_nodes.clone(),
+        dcutr_enabled: state.config.enable_dcutr,
+        transport: "TCP+QUIC".to_string(),
+        hole_punching_attempts,
+        hole_punching_successes,
+        mesh_version: "libp2p-v0.53".to_string(),
+    };
+
+    (StatusCode::OK, Json(response)).into_response()
 }
 
 async fn settle_handler(State(state): State<SharedState>) -> impl IntoResponse {

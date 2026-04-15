@@ -16,6 +16,12 @@ pub struct OnionRouter {
     pub public_key: PublicKey,
 }
 
+impl Default for OnionRouter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl OnionRouter {
     pub fn new() -> Self {
         let private_key = StaticSecret::random_from_rng(OsRng);

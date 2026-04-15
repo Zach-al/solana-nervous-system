@@ -12,13 +12,14 @@ pub mod geo_router;
 pub mod load_balancer;
 pub mod attack_prevention;
 pub mod wallet_rewards;
+pub mod identity;
 pub mod latency_engine;
 pub mod platform;
 pub mod battery_guard;
 pub mod mobile_peer;
 
 use anyhow::Result;
-use serde_json;
+
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
@@ -31,6 +32,12 @@ pub struct SlotCache {
 }
 
 use tokio::sync::Mutex;
+
+impl Default for SlotCache {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl SlotCache {
     pub fn new() -> Self {
@@ -108,6 +115,13 @@ async fn main() -> Result<()> {
 
     print_banner(&cfg, &onion_router, &shard_router, &geo_router);
 
+    // Setup Metric Tracking
+    let connected_peers = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let hole_punch_attempts = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let hole_punch_successes = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let nat_status = Arc::new(Mutex::new("Unknown".to_string()));
+    let node_multiaddrs = Arc::new(Mutex::new(Vec::new()));
+
     let peer_registry = Arc::new(dashmap::DashMap::new());
     let daily_salt = Arc::new(rpc_proxy::DailySalt::new());
     
@@ -117,22 +131,7 @@ async fn main() -> Result<()> {
     let peer_registry_clone2 = peer_registry.clone();
 
     // ── V1.2 Mobile Peer Registration ───────────────────────
-    if !platform_config.p2p_enabled {
-        let mut client = mobile_peer::MobilePeerClient::new(
-            format!("{}", uuid::Uuid::new_v4()),
-            platform_config.platform_name.to_string(),
-        );
-        match client.register().await {
-            Ok(peer) => {
-                tracing::info!("Mobile registered with peer: {}", peer);
-            }
-            Err(e) => {
-                tracing::warn!(
-                    "Mobile registration failed: {}. Using direct fallback.", e
-                );
-            }
-        }
-    }
+    // Removed: Libp2p handles mobile targets natively using AutoNAT & DCUtR.
 
     // Spawn security cleanup task
     let ap_cleanup = attack_prevention.clone();
@@ -207,6 +206,12 @@ async fn main() -> Result<()> {
 
     // Spawn HTTP RPC proxy and P2P node concurrently
     let battery_guard_clone = battery_guard.clone();
+    let connected_peers_rpc = connected_peers.clone();
+    let hole_punch_attempts_rpc = hole_punch_attempts.clone();
+    let hole_punch_successes_rpc = hole_punch_successes.clone();
+    let nat_status_rpc = nat_status.clone();
+    let node_multiaddrs_rpc = node_multiaddrs.clone();
+
     let rpc_handle = tokio::spawn(async move {
         let node_id = uuid::Uuid::new_v4().to_string();
         if let Err(e) = rpc_proxy::start_rpc_proxy(
@@ -225,6 +230,11 @@ async fn main() -> Result<()> {
             wallet_tracker,
             latency_engine,
             battery_guard_clone,
+            connected_peers_rpc,
+            hole_punch_attempts_rpc,
+            hole_punch_successes_rpc,
+            nat_status_rpc,
+            node_multiaddrs_rpc,
         ).await {
             tracing::error!("RPC proxy error: {}", e);
         }
@@ -246,7 +256,16 @@ async fn main() -> Result<()> {
     };
 
     let p2p_handle = tokio::spawn(async move {
-        if let Err(e) = p2p::start_p2p_node(cfg_clone2, peer_registry_clone2, &p2p_platform_config).await {
+        if let Err(e) = p2p::start_p2p_node(
+            cfg_clone2, 
+            peer_registry_clone2, 
+            &p2p_platform_config,
+            connected_peers,
+            hole_punch_attempts,
+            hole_punch_successes,
+            nat_status,
+            node_multiaddrs,
+        ).await {
             tracing::error!("P2P node error: {}", e);
         }
     });
