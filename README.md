@@ -11,7 +11,7 @@
   <a href="https://github.com/Zach-al/solana-nervous-system/actions"><img src="https://img.shields.io/badge/SLSA_Provenance-verified-brightgreen?style=flat-square" /></a>
   <a href="https://solnet-wheat.vercel.app"><img src="https://img.shields.io/badge/Dashboard-Live-00ff88?style=flat-square" /></a>
   <a href="https://solnet-production.up.railway.app/health"><img src="https://img.shields.io/badge/Node-Online-00ff88?style=flat-square" /></a>
-  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-white?style=flat-square" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-BSL%201.1-blue?style=flat-square" /></a>
 </p>
 
 <p align="center">
