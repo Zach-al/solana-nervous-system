@@ -331,7 +331,7 @@ async fn main() -> Result<()> {
         platform_name: p2p_platform_name,
     };
 
-    let p2p_handle = tokio::spawn(async move {
+    let _p2p_handle = tokio::spawn(async move {
         if let Err(e) = p2p::start_p2p_node(
             cfg_clone2, 
             peer_registry_clone2, 
@@ -349,31 +349,17 @@ async fn main() -> Result<()> {
     });
 
     // Execute RPC Proxy and P2P Mesh as independent tasks.
-    // The RPC Proxy is critical for health checks and service stability.
-    // The P2P Mesh is vital for the protocol but must not take down the gateway if it fails.
-    
-    // We only wait for the RPC handle normally. The P2P handle runs in the background.
-    // If the RPC proxy task itself panics, the whole process must fail.
+    // The RPC Proxy is the CRITICAL process that passes health checks.
+    // The P2P Mesh is a background task that can fail or retry without killing the server.
     
     eprintln!("[SOLNET] STAGE 4: PRODUCTION RUNTIME STABILIZED");
     std::io::stderr().flush().ok();
 
-    tokio::select! {
-        res = rpc_handle => {
-            match res {
-                Ok(_) => tracing::info!("RPC proxy shut down gracefully."),
-                Err(e) => tracing::error!("FATAL PANIC: RPC proxy task panicked: {:?}", e),
-            }
-        }
-        res = p2p_handle => {
-            match res {
-                Ok(_) => tracing::warn!("P2P mesh task completed unexpectedly."),
-                Err(e) => tracing::error!("P2P mesh task panicked: {:?}", e),
-            }
-            // Keep the process alive so binary doesn't restart immediately while RPC is healthy
-            tracing::info!("Continuing execution in Standalone Mode (Mesh Offline).");
-            std::future::pending::<()>().await;
-        }
+    // Only await the RPC handle. The P2P task is already spawned and will run in the background.
+    // This removes the "death pact" where a mesh failure would cancel the RPC gateway.
+    if let Err(e) = rpc_handle.await {
+        tracing::error!("FATAL PANIC: RPC proxy task panicked: {:?}", e);
+        eprintln!("[SOLNET] FATAL PANIC: RPC proxy task panicked: {:?}", e);
     }
 
     eprintln!("[SOLNET] Daemon process exiting.");
