@@ -308,6 +308,9 @@ async fn main() -> Result<()> {
         );
 
         eprintln!("[SOLNET] STAGE 3: AXUM SERVER STARTING...");
+        let local_addr = listener.local_addr().unwrap();
+        tracing::info!("AXUM server listening on http://{}", local_addr);
+        eprintln!("[DIAG] SERVER_URL: http://{}", local_addr);
         std::io::stderr().flush().ok();
 
         axum::serve(listener, app)
@@ -345,6 +348,15 @@ async fn main() -> Result<()> {
             telemetry,
         ).await {
             tracing::error!("P2P node error: {}", e);
+        }
+    });
+
+    // Diagnostic Task: Heartbeat to verify process life during 502 periods
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(tokio::time::Duration::from_secs(30)).await;
+            tracing::info!("[HEARTBEAT] SOLNET DAEMON ACTIVE | Uptime: {}s", Utc::now().timestamp());
+            eprintln!("[HEARTBEAT] SOLNET DAEMON ACTIVE");
         }
     });
 
@@ -388,10 +400,12 @@ async fn shutdown_signal() {
 
     tokio::select! {
         _ = ctrl_c => {
-            tracing::info!("SIGINT received — shutting down");
+            tracing::info!("SIGINT received — starting graceful shutdown");
+            eprintln!("[DIAG] SIGINT received");
         }
         _ = terminate => {
-            tracing::info!("SIGTERM received — shutting down");
+            tracing::info!("SIGTERM received — starting graceful shutdown");
+            eprintln!("[DIAG] SIGTERM received");
         }
     }
 }

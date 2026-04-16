@@ -12,10 +12,12 @@ ulimit -n 65535 || echo "[WARN] Could not increase ulimit"
 echo "[DIAG] Environment Check:"
 env | grep -E "PORT|SOLANA_RPC_URL|NODE_NAME" || echo "No public vars found"
 
-# Logic to find the binary
+# Ensure no stale processes are binding the port
+fuser -k 8080/tcp 2>/dev/null || true
+
+# Logic to find the binary (Prefer workspace build)
 WORKSPACE_BINARY="./target/release/sns-daemon"
 MEMBER_BINARY="./sns-daemon/target/release/sns-daemon"
-CUSTOM_BINARY="./SOLNET_DAEMON_V212"
 
 TARGET_BIN=""
 
@@ -25,15 +27,13 @@ if [ -f "$WORKSPACE_BINARY" ]; then
 elif [ -f "$MEMBER_BINARY" ]; then
     echo "[INFO] Found Member Binary at $MEMBER_BINARY"
     TARGET_BIN="$MEMBER_BINARY"
-elif [ -f "$CUSTOM_BINARY" ]; then
-    echo "[WARN] Found LEGACY Binary at $CUSTOM_BINARY. Using with caution."
-    TARGET_BIN="$CUSTOM_BINARY"
 else
     echo "[ERROR] NO DAEMON BINARY FOUND!"
-    echo "Files in current directory:"
-    ls -R | grep -i daemon || echo "No files matching 'daemon' found"
     exit 1
 fi
+
+echo "[DIAG] Listing Active Listeners before exec:"
+cat /proc/net/tcp | head -n 5 || echo "proc net tcp unavailable"
 
 echo "[INFO] Executing $TARGET_BIN..."
 chmod +x "$TARGET_BIN"

@@ -641,6 +641,7 @@ async fn settle_handler(State(state): State<SharedState>) -> impl IntoResponse {
 async fn health_handler(
     State(state): State<SharedState>,
 ) -> impl IntoResponse {
+    tracing::info!("[HEALTH] Check hit from remote edge");
     let uptime = (Utc::now() - state.stats.lock().await.started_at).num_seconds() as u64;
     
     // Always return 200 with valid JSON
