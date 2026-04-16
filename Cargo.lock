@@ -5201,15 +5201,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b8848ee67ecc8aedbaf3e4122217aff892639231befc6a1b58d29fff4c2cabaa"
 
 [[patch.unused]]
-name = "aes-gcm-siv"
-version = "0.10.3"
-
-[[patch.unused]]
 name = "curve25519-dalek"
 version = "3.2.1"
 source = "git+https://github.com/anza-xyz/curve25519-dalek.git?rev=b500cdc2a920cd5bff9e2dd974d7b97349d61464#b500cdc2a920cd5bff9e2dd974d7b97349d61464"
-
-[[patch.unused]]
-name = "solana_rbpf"
-version = "0.8.0"
-source = "git+https://github.com/solana-labs/rbpf.git?rev=v0.8.0#b503a1867a9cfa13f93b4d99679a17fe219831de"

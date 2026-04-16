@@ -38,3 +38,11 @@ Thumbs.db
 batches/
 earnings_backup.json
 pod-logs/
+
+# Block root binaries (Enterprise Hardening)
+/sns-daemon-test*
+/SOLNET_DAEMON*
+/*.exe
+/*.bin
+/sns-daemon-release
+/target-binary

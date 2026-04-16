@@ -62,6 +62,7 @@ async fn main() -> Result<()> {
     eprintln!("[SOLNET] System Parameters Loading...");
     eprintln!("[SOLNET] ENV PORT detected: {:?}", std::env::var("PORT"));
     eprintln!("[SOLNET] Resolved HTTP Port: {}", cfg.http_port);
+    eprintln!("[SOLNET] STAGE 1: ENVIRONMENT VALIDATION COMPLETE");
     std::io::stderr().flush().ok();
 
     // Initialize tracing subscriber with env-filter
@@ -276,7 +277,10 @@ async fn main() -> Result<()> {
         // Task 3: Railway Port Binding
         // MUST bind to 0.0.0.0 not 127.0.0.1
         // Railway routes external traffic to 0.0.0.0:$PORT
+        // Railway routes external traffic to 0.0.0.0:$PORT
         let bind_addr = format!("0.0.0.0:{}", cfg_for_rpc.http_port);
+        eprintln!("[SOLNET] STAGE 2: BINDING TO {}...", bind_addr);
+        std::io::stderr().flush().ok();
 
         let listener = tokio::net::TcpListener::bind(&bind_addr)
             .await
@@ -298,6 +302,9 @@ async fn main() -> Result<()> {
         tracing::info!(
             "╚══════════════════════════════════╝"
         );
+
+        eprintln!("[SOLNET] STAGE 3: AXUM SERVER STARTING...");
+        std::io::stderr().flush().ok();
 
         axum::serve(listener, app)
             .with_graceful_shutdown(shutdown_signal())
