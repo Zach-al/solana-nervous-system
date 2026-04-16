@@ -15,6 +15,7 @@ use serde::Serialize;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tower_http::cors::{Any, CorsLayer};
+use std::io::{self, Write};
 use tracing::{info, warn, error};
 use serde_json;
 use base64::{engine::general_purpose, Engine as _};
@@ -208,8 +209,13 @@ pub async fn start_rpc_proxy(
 
     let addr = format!("0.0.0.0:{}", config.http_port);
     println!("[SOLNET] Attempting to bind RPC Proxy to: {}", addr);
+    std::io::stdout().flush().ok();
+    
     let listener = tokio::net::TcpListener::bind(&addr).await?;
+    
     println!("[SOLNET] Successfully bound to: {}", addr);
+    std::io::stdout().flush().ok();
+    
     info!("RPC proxy listening on http://{}", addr);
 
     axum::serve(listener, app).await?;

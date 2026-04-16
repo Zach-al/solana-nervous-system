@@ -51,11 +51,15 @@ impl SlotCache {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    use std::io::Write;
+    println!("\n\n[SOLNET-V2.1.2-PRODUCTION] INITIALIZING...");
+    std::io::stdout().flush().ok();
+    
     let cfg = config::Config::from_env();
-    println!("[SOLNET] System Initializing...");
+    println!("[SOLNET] System Parameters Loading...");
     println!("[SOLNET] ENV PORT detected: {:?}", std::env::var("PORT"));
-    println!("[SOLNET] ENV HTTP_PORT detected: {:?}", std::env::var("HTTP_PORT"));
     println!("[SOLNET] Resolved HTTP Port: {}", cfg.http_port);
+    std::io::stdout().flush().ok();
 
     // Initialize tracing subscriber with env-filter
     tracing_subscriber::registry()
@@ -300,10 +304,24 @@ async fn main() -> Result<()> {
         }
     });
 
-    // Wait for both tasks
-    tokio::try_join!(rpc_handle, p2p_handle)?;
+    // Wait for both tasks and handle failures as fatal
+    tokio::select! {
+        res = rpc_handle => {
+            match res {
+                Ok(_) => eprintln!("[SOLNET] FATAL ERROR: RPC proxy terminated unexpectedly without error logic!"),
+                Err(e) => eprintln!("[SOLNET] FATAL PANIC: RPC proxy task panicked: {:?}", e),
+            }
+        }
+        res = p2p_handle => {
+            match res {
+                Ok(_) => eprintln!("[SOLNET] FATAL ERROR: P2P node terminated unexpectedly!"),
+                Err(e) => eprintln!("[SOLNET] FATAL PANIC: P2P node task panicked: {:?}", e),
+            }
+        }
+    }
 
-    Ok(())
+    eprintln!("[SOLNET] Daemon process exiting due to critical failure.");
+    std::process::exit(1);
 }
 
 fn print_banner(
