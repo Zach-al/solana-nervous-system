@@ -189,6 +189,7 @@ pub async fn start_rpc_proxy(
         .route("/security/stats", get(security_stats_handler))
         .route("/telemetry/ingest", post(telemetry_ingest_handler))
         .route("/telemetry/aggregate", get(telemetry_aggregate_handler))
+        .route("/telemetry/install", get(telemetry_install_handler))
         .route("/onion", post(onion_handler))
         .route("/performance", get(performance_handler))
         .route("/wallet", get(wallet_handler))
@@ -542,8 +543,17 @@ async fn onion_handler(
             }
         }
     }
+    r
 }
 
+async fn telemetry_install_handler(
+    State(_state): State<SharedState>,
+) -> impl IntoResponse {
+    // Allows tracking NPM installs (SDK downloads)
+    let mut r = Json(serde_json::json!({"status": "tracked"})).into_response();
+    r.headers_mut().extend(security_headers());
+    r
+}
 
 // ─────────────────────────────────────────────────────────────
 // Root GET endpoint (for browsers)

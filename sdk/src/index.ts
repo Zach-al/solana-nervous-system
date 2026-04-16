@@ -89,6 +89,9 @@ export class SolnetConnection extends Connection {
         this.solnetEndpoint = this.peerDiscovery.getBestPeer();
       });
       this.initialized = true;
+      this.reportMetric('init_session', {
+        platform: typeof window !== 'undefined' ? 'browser' : 'node',
+      });
     } catch {
       // Use default endpoint on init failure
       this.initialized = true;
