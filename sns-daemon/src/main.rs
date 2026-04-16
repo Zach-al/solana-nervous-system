@@ -280,18 +280,15 @@ async fn main() -> Result<()> {
         );
 
         // Task 3: Railway Port Binding
-        // Bind to [::] for dual-stack (IPv4 + IPv6) support
-        let bind_addr = format!("[::]:{}", cfg_for_rpc.http_port);
-        eprintln!("[SOLNET] STAGE 2: BINDING TO DUAL-STACK {}...", bind_addr);
+        // Railway docs: "Your web server should bind to 0.0.0.0"
+        // https://docs.railway.com/guides/fixing-common-errors
+        let bind_addr = format!("0.0.0.0:{}", cfg_for_rpc.http_port);
+        eprintln!("[SOLNET] STAGE 2: BINDING TO {}...", bind_addr);
         std::io::stderr().flush().ok();
 
-        let listener = match tokio::net::TcpListener::bind(&bind_addr).await {
-            Ok(l) => l,
-            Err(e) => {
-                eprintln!("[WARN] [::] bind failed: {}. Falling back to 0.0.0.0", e);
-                tokio::net::TcpListener::bind(&format!("0.0.0.0:{}", cfg_for_rpc.http_port)).await.unwrap()
-            }
-        };
+        let listener = tokio::net::TcpListener::bind(&bind_addr)
+            .await
+            .expect(&format!("FATAL: Cannot bind to {}", bind_addr));
 
         tracing::info!(
             "╔══════════════════════════════════╗"
