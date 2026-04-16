@@ -1,6 +1,6 @@
 # solnet-sdk
 
-> Decentralized RPC for Solana. Replace one line. Save 30%. Never go down.
+> Enterprise grade Decentralized RPC routing for Solana. Eliminate downtime, reduce infrastructure costs, and guarantee censorship resistance with the SOLNET edge protocol.
 
 [![npm version](https://badge.fury.io/js/solnet-sdk.svg)](https://www.npmjs.com/package/solnet-sdk)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
@@ -76,6 +76,10 @@ const connection = new SolnetConnection({
   onVerified: (proof) => {
     console.log('Verified at slot:', proof.slot)
   },
+
+  // Client Telemetry Routing (Enterprise Feature)
+  // Route underlying network telemetry to your own observability stack
+  telemetryEndpoint: 'https://metrics.your-enterprise.com/ingest',
 })
 ```
 
@@ -129,4 +133,4 @@ localStorage.setItem('SOLNET_NO_TELEMETRY', 'true')
 - Node: https://solnet-production.up.railway.app/health
 
 ## License
-MIT — Bhupen Nayak — Built at Solana Hackathon 2026
+MIT — © 2026 SOLNET Enterprise. All rights reserved.
