@@ -66,9 +66,13 @@ async fn main() -> Result<()> {
     std::io::stderr().flush().ok();
 
     // Initialize tracing subscriber with env-filter
+    let filter = EnvFilter::new(&cfg.log_level)
+        .add_directive("libp2p_kad=error".parse().unwrap())
+        .add_directive("libp2p_gossipsub=error".parse().unwrap());
+        
     tracing_subscriber::registry()
         .with(fmt::layer().with_target(false))
-        .with(EnvFilter::new(&cfg.log_level))
+        .with(filter)
         .init();
 
     // ── V1.2 Platform Detection ─────────────────────────────
@@ -344,24 +348,30 @@ async fn main() -> Result<()> {
         }
     });
 
-    // Wait for critical RPC proxy task, log but don't exit on P2P task completion
+    // Execute RPC Proxy and P2P Mesh as independent tasks.
+    // The RPC Proxy is critical for health checks and service stability.
+    // The P2P Mesh is vital for the protocol but must not take down the gateway if it fails.
+    
+    // We only wait for the RPC handle normally. The P2P handle runs in the background.
+    // If the RPC proxy task itself panics, the whole process must fail.
+    
+    eprintln!("[SOLNET] STAGE 4: PRODUCTION RUNTIME STABILIZED");
+    std::io::stderr().flush().ok();
+
     tokio::select! {
         res = rpc_handle => {
             match res {
-                Ok(_) => eprintln!("[SOLNET] RPC proxy shutdown gracefully."),
-                Err(e) => eprintln!("[SOLNET] FATAL PANIC: RPC proxy task panicked: {:?}", e),
+                Ok(_) => tracing::info!("RPC proxy shut down gracefully."),
+                Err(e) => tracing::error!("FATAL PANIC: RPC proxy task panicked: {:?}", e),
             }
         }
         res = p2p_handle => {
             match res {
-                Ok(_) => eprintln!("[SOLNET] P2P node task unexpectedly completed."),
-                Err(e) => eprintln!("[SOLNET] P2P node task panicked: {:?}", e),
+                Ok(_) => tracing::warn!("P2P mesh task completed unexpectedly."),
+                Err(e) => tracing::error!("P2P mesh task panicked: {:?}", e),
             }
-            // In Enterprise V2.1, we DON'T exit here. 
-            // We keep the RPC gateway alive for health checks and standalone ops.
-            tracing::warn!("P2P mesh node is offline, but RPC Gateway remains active.");
-            
-            // Just wait forever to keep the main task alive if RPC is still running
+            // Keep the process alive so binary doesn't restart immediately while RPC is healthy
+            tracing::info!("Continuing execution in Standalone Mode (Mesh Offline).");
             std::future::pending::<()>().await;
         }
     }

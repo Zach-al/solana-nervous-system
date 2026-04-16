@@ -181,13 +181,17 @@ pub fn create_rpc_router(
         .allow_methods(Any)
         .allow_headers(Any);
 
+    let rpc_service = tower::ServiceBuilder::new()
+        .layer(axum::error_handling::HandleErrorLayer::new(|_: tower::BoxError| async {
+            StatusCode::REQUEST_TIMEOUT
+        }))
+        .layer(tower::timeout::TimeoutLayer::new(std::time::Duration::from_secs(5)));
+
     Router::new()
         .route("/", post(rpc_handler).get(root_get_handler))
-        .route("/health", get(health_handler))
         .route("/stats", get(stats_handler))
         .route("/mesh/status", get(mesh_status_handler))
         .route("/security/stats", get(security_stats_handler))
-        .route("/telemetry/ingest", post(telemetry_ingest_handler))
         .route("/telemetry/aggregate", get(telemetry_aggregate_handler))
         .route("/telemetry/install", get(telemetry_install_handler))
         .route("/onion", post(onion_handler))
@@ -196,13 +200,9 @@ pub fn create_rpc_router(
         .route("/settle", post(settle_handler))
         .route("/mobile/register", post(mobile_register_handler))
         .route("/mobile/peers", get(mobile_peers_handler))
-        .layer(
-            tower::ServiceBuilder::new()
-                .layer(axum::error_handling::HandleErrorLayer::new(|_: tower::BoxError| async {
-                    StatusCode::REQUEST_TIMEOUT
-                }))
-                .layer(tower::timeout::TimeoutLayer::new(std::time::Duration::from_secs(5))),
-        )
+        .layer(rpc_service)
+        .route("/health", get(health_handler))
+        .route("/telemetry/ingest", post(telemetry_ingest_handler))
         .layer(cors)
         .with_state(state)
 }

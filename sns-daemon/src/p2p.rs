@@ -198,8 +198,10 @@ pub async fn start_p2p_node(
 
     if !config.bootstrap_nodes.is_empty() {
         if let Err(e) = swarm.behaviour_mut().kademlia.bootstrap() {
-            warn!("Failed to start Kademlia bootstrap: {:?}", e);
+            tracing::debug!("Kademlia bootstrap initial skip/wait: {:?}", e);
         }
+    } else {
+        tracing::debug!("P2P mesh starting in standalone mode (no bootstrap peers).");
     }
 
     // Drive the swarm
