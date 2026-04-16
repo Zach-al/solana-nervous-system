@@ -73,15 +73,7 @@ criterion = { version = "0.5", features = ["html_reports"] }
 name = "latency_bench"
 harness = false
 
-[profile.release]
-opt-level = 3
-lto = true
-codegen-units = 1
-panic = "abort"
-strip = true
 
-[patch.crates-io]
-# Any crates flagged by cargo audit would go here
 
 [package.metadata.mobile]
 targets = [

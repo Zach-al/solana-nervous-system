@@ -292,13 +292,6 @@ async fn main() -> Result<()> {
                 tokio::net::TcpListener::bind(&format!("0.0.0.0:{}", cfg_for_rpc.http_port)).await.unwrap()
             }
         };
-            .unwrap_or_else(|e| {
-                panic!(
-                    "FATAL: Cannot bind to {} — {}\n\
-                     Check PORT or HTTP_PORT env var",
-                    bind_addr, e
-                )
-            });
 
         tracing::info!(
             "╔══════════════════════════════════╗"
