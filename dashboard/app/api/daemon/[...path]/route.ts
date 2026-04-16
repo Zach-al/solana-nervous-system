@@ -1,11 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+/**
+ * RALPH Loop: Handle/Execute
+ * Next.js 16/15 Route Handler for SNS Daemon Proxying. 
+ * Resolves async params according to App Router specifications.
+ */
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ path: string[] }> }
 ) {
-  const { path: pathSegments } = await params;
-  const path = pathSegments.join('/');
+  // Logic: Await params to comply with Next.js dynamic routing types
+  const resolvedParams = await params;
+  const pathParts = resolvedParams.path;
+  const path = pathParts.join('/');
+  
   const nodeUrl = process.env.NEXT_PUBLIC_NODE_URL || 'https://solnet-production.up.railway.app';
   const targetUrl = `${nodeUrl}/${path}${request.nextUrl.search}`;
 
@@ -19,6 +28,7 @@ export async function GET(
     });
 
     if (!response.ok) {
+      console.warn(`[API_PROXY] Daemon error for ${path}: ${response.status}`);
       return NextResponse.json(
         { error: `Daemon responded with ${response.status}` },
         { status: response.status }
@@ -28,6 +38,7 @@ export async function GET(
     const data = await response.json();
     return NextResponse.json(data);
   } catch (error) {
+    console.error(`[API_PROXY] Connection failure for ${path}:`, error);
     return NextResponse.json(
       { error: 'Failed to connect to SNS daemon' },
       { status: 502 }
@@ -39,8 +50,11 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ path: string[] }> }
 ) {
-  const { path: pathSegments } = await params;
-  const path = pathSegments.join('/');
+  // Logic: Await params to comply with Next.js dynamic routing types
+  const resolvedParams = await params;
+  const pathParts = resolvedParams.path;
+  const path = pathParts.join('/');
+  
   const nodeUrl = process.env.NEXT_PUBLIC_NODE_URL || 'https://solnet-production.up.railway.app';
   const targetUrl = `${nodeUrl}/${path}${request.nextUrl.search}`;
 
@@ -55,6 +69,7 @@ export async function POST(
     });
 
     if (!response.ok) {
+      console.warn(`[API_PROXY] Daemon POST error for ${path}: ${response.status}`);
       return NextResponse.json(
         { error: `Daemon responded with ${response.status}` },
         { status: response.status }
@@ -64,6 +79,7 @@ export async function POST(
     const data = await response.json();
     return NextResponse.json(data);
   } catch (error) {
+    console.error(`[API_PROXY] Connection failure for POST ${path}:`, error);
     return NextResponse.json(
       { error: 'Failed to connect to SNS daemon' },
       { status: 502 }
