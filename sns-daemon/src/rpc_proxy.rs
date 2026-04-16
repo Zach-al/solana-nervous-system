@@ -206,8 +206,10 @@ pub async fn start_rpc_proxy(
         .layer(cors)
         .with_state(state);
 
-    let addr = format!("[::]:{}", config.http_port);
+    let addr = format!("0.0.0.0:{}", config.http_port);
+    println!("[SOLNET] Attempting to bind RPC Proxy to: {}", addr);
     let listener = tokio::net::TcpListener::bind(&addr).await?;
+    println!("[SOLNET] Successfully bound to: {}", addr);
     info!("RPC proxy listening on http://{}", addr);
 
     axum::serve(listener, app).await?;

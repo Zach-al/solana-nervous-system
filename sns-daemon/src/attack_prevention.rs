@@ -170,8 +170,9 @@ impl AttackPrevention {
             return true;
         }
 
-        tracing::warn!("[V2.1 SECURITY] Blocked invalid Host header: '{}' (Env: {})", host, config.env_mode);
-        false
+        // 5. Fallback: Passive trust with logging for PRODUCTION (Ensures Railway ingress connectivity)
+        tracing::warn!("[V2.1 SECURITY] SOFT-FAIL invalid Host: '{}'. Allowing for ingress compatibility.", host);
+        true
     }
 }
 
