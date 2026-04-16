@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { secureFetch } from '../lib/secure-fetch';
 
 interface EarningsData {
     pending_receipts: number;
@@ -14,23 +15,37 @@ interface EarningsData {
 
 export default function EarningsPanel() {
     const [data, setData] = useState<EarningsData>({
-        pending_receipts: 42,
-        last_settled_lamports: 150000,
-        last_settled_receipts: 150,
-        last_settled_at: '22 MIN AGO',
-        total_earned_sol: 0.0452,
-        next_settlement_seconds: 2280,
-        merkle_root: '7F8E9A...B2C3D4'
+        pending_receipts: 0,
+        last_settled_lamports: 0,
+        last_settled_receipts: 0,
+        last_settled_at: 'NEVER',
+        total_earned_sol: 0,
+        next_settlement_seconds: 3600,
+        merkle_root: 'IDENTITY_INITIALIZING'
     });
 
     useEffect(() => {
-        const timer = setInterval(() => {
-            setData(prev => ({
-                ...prev,
-                next_settlement_seconds: Math.max(0, prev.next_settlement_seconds - 1)
-            }));
-        }, 1000);
-        return () => clearInterval(timer);
+        const fetchEarnings = async () => {
+            try {
+                const res = await secureFetch('/api/daemon/wallet');
+                if (res.ok) {
+                    const status = await res.json();
+                    setData(prev => ({
+                        ...prev,
+                        pending_receipts: status.session_requests,
+                        total_earned_sol: status.lifetime_earned_sol,
+                        next_settlement_seconds: status.next_settlement_in_secs,
+                        merkle_root: status.wallet_address.slice(0, 16) + '...'
+                    }));
+                }
+            } catch (err) {
+                console.error("Failed to fetch earnings", err);
+            }
+        };
+
+        fetchEarnings();
+        const interval = setInterval(fetchEarnings, 5000);
+        return () => clearInterval(interval);
     }, []);
 
     const formatTime = (seconds: number) => {

@@ -32,8 +32,7 @@ export default function PerformancePanel() {
     useEffect(() => {
         const fetchData = async () => {
             try {
-                const nodeUrl = process.env.NEXT_PUBLIC_NODE_URL || 'https://solnet-production.up.railway.app';
-                const res = await fetch(`${nodeUrl}/performance`);
+                const res = await fetch('/api/daemon/performance');
                 if (res.ok) {
                     const json = await res.json();
                     setData(json);

@@ -26,10 +26,13 @@ export async function secureFetch(
   url: string,
   options: RequestInit = {}
 ): Promise<Response> {
+  // ── Unified Proxy Support ──────────────────────────────
+  const isLocalProxy = url.startsWith('/api/daemon');
+
   // ── Domain allow-list ─────────────────────────────────────
-  if (!isDomainAllowed(url)) {
-    const { hostname } = new URL(url)
-    throw new Error(`SOLNET: domain not allowed: ${hostname}`)
+  if (!isLocalProxy && !isDomainAllowed(url)) {
+    const { hostname } = new URL(url);
+    throw new Error(`SOLNET: domain not allowed: ${hostname}`);
   }
 
   // ── Abort controller for timeout ─────────────────────────

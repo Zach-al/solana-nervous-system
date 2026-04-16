@@ -24,7 +24,7 @@ export default function MeshPanel() {
   useEffect(() => {
     const fetchStatus = async () => {
       try {
-        const res = await fetch('/api/proxy?path=/mesh/status');
+        const res = await fetch('/api/daemon/mesh/status');
         if (res.ok) {
           const data = await res.json();
           setStatus(data);

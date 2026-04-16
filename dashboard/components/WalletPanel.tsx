@@ -1,35 +1,55 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { secureFetch } from '../lib/secure-fetch';
 
 export default function WalletPanel() {
   const [wallet, setWallet] = useState({
-    pubkey: '7xkx...8y9z',
-    balance: 4.52,
-    staked: 1000.00,
-    rewards_pending: 12.4,
+    pubkey: 'SNS_LOADING...',
+    balance: 0,
+    staked: 0,
+    rewards_pending: 0,
   });
 
   const [settling, setSettling] = useState(false);
   const [settled, setSettled] = useState(false);
+
+  useEffect(() => {
+    const fetchWallet = async () => {
+      try {
+        const res = await secureFetch('/api/daemon/wallet');
+        if (res.ok) {
+          const data = await res.json();
+          setWallet({
+            pubkey: data.wallet_address,
+            balance: data.confirmed_wallet_balance_sol,
+            staked: data.lifetime_earned_sol,
+            rewards_pending: data.pending_sol,
+          });
+        }
+      } catch (err) {
+          console.error('Failed to fetch wallet status', err);
+      }
+    };
+    fetchWallet();
+    const interval = setInterval(fetchWallet, 5000);
+    return () => clearInterval(interval);
+  }, []);
 
   const handleClaimAll = async () => {
     if (wallet.rewards_pending === 0 || settling) return;
     
     setSettling(true);
     try {
-      // Trigger manual settlement on the daemon
-      const nodeUrl = process.env.NEXT_PUBLIC_NODE_URL || 'https://solnet-production.up.railway.app';
-      await fetch(`${nodeUrl}/settle`, { method: 'POST' });
+      // Trigger manual settlement on the daemon via unified proxy
+      const res = await secureFetch('/api/daemon/settle', { method: 'POST' });
       
-      // Simulate confirmation delay for UX
-      await new Promise(r => setTimeout(r, 2000));
-      
-      setSettled(true);
-      setWallet(prev => ({ ...prev, rewards_pending: 0 }));
-      
-      // Reset success state after a few seconds
-      setTimeout(() => setSettled(false), 5000);
+      if (res.ok) {
+        setSettled(true);
+        setWallet(prev => ({ ...prev, rewards_pending: 0 }));
+        // Reset success state after a few seconds
+        setTimeout(() => setSettled(false), 5000);
+      }
     } catch (e) {
       console.error("Settlement failed", e);
     } finally {

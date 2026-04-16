@@ -33,8 +33,7 @@ export default function StatsPanel() {
 
   const fetchStats = useCallback(async () => {
     try {
-      const nodeUrl = process.env.NEXT_PUBLIC_NODE_URL || 'https://solnet-production.up.railway.app';
-      const res = await secureFetch(`${nodeUrl}/stats`);
+      const res = await secureFetch('/api/daemon/stats');
       if (!res.ok) throw new Error('bad status');
       const data: NodeStats = await res.json();
       setStats(data);
