@@ -65,6 +65,8 @@ export class SolnetConnection extends Connection {
   private peerDiscovery: PeerDiscovery;
   private initialized: boolean = false;
   private performanceMetrics: Record<string, { total: number, count: number, min: number, max: number }> = {};
+  private heartbeatInterval?: any;
+  private telemetryUrl: string;
 
   constructor(config: SolnetConfig = {}) {
     const endpoint = config.endpoint || BOOTSTRAP_PEERS[0];
@@ -75,6 +77,13 @@ export class SolnetConnection extends Connection {
     this.fallbackEndpoint = config.fallback || 'https://api.devnet.solana.com';
     this.privacy = config.privacy || false;
     this.peerDiscovery = new PeerDiscovery(config.peers || [...BOOTSTRAP_PEERS]);
+
+    // Telemetry URL override logic
+    const defaultUrl = 'https://solnet-production.up.railway.app/telemetry/ingest';
+    let overrideUrl = null;
+    if (typeof process !== 'undefined') overrideUrl = process.env?.SOLNET_TELEMETRY_URL;
+    if (!overrideUrl && typeof localStorage !== 'undefined') overrideUrl = localStorage.getItem('SOLNET_TELEMETRY_URL');
+    this.telemetryUrl = overrideUrl || defaultUrl;
   }
 
   private async ensureInitialized(): Promise<void> {
@@ -92,6 +101,16 @@ export class SolnetConnection extends Connection {
       this.reportMetric('init_session', {
         platform: typeof window !== 'undefined' ? 'browser' : 'node',
       });
+
+      // Start Heartbeat Loop (60s)
+      if (!this.heartbeatInterval) {
+        this.heartbeatInterval = setInterval(() => {
+          this.reportMetric('heartbeat', {
+            mode: this.getDiagnostic().mode,
+            endpoint: this.solnetEndpoint
+          });
+        }, 60000);
+      }
     } catch {
       // Use default endpoint on init failure
       this.initialized = true;
@@ -117,7 +136,7 @@ export class SolnetConnection extends Connection {
         event,
         ...data,
       }
-      fetch('https://solnet-production.up.railway.app/telemetry/ingest', {
+      fetch(this.telemetryUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -163,7 +182,10 @@ export class SolnetConnection extends Connection {
 
       const response = await fetch(targetUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Host': new URL(this.solnetEndpoint).host
+        },
         body: JSON.stringify(body),
         signal: AbortSignal.timeout(10000),
       });
@@ -242,7 +264,19 @@ export class SolnetConnection extends Connection {
     return summary;
   }
 
+  getDiagnostic(): { mode: 'Direct' | 'Relay'; endpoint: string; initialized: boolean } {
+    const isRelay = this.solnetEndpoint.includes('railway.app') || this.solnetEndpoint.includes('/p2p-circuit');
+    return {
+      mode: isRelay ? 'Relay' : 'Direct',
+      endpoint: this.solnetEndpoint,
+      initialized: this.initialized
+    };
+  }
+
   destroy(): void {
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval);
+    }
     this.peerDiscovery.stopHealthChecks();
   }
 }

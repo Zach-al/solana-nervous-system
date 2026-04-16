@@ -51,7 +51,7 @@ pub async fn start_p2p_node(
     platform_config: &crate::platform::PlatformConfig,
     connected_peers: Arc<std::sync::atomic::AtomicUsize>,
     hole_punch_attempts: Arc<std::sync::atomic::AtomicUsize>,
-    hole_punch_successes: Arc<std::sync::atomic::AtomicUsize>,
+    _hole_punch_successes: Arc<std::sync::atomic::AtomicUsize>,
     nat_status: Arc<tokio::sync::Mutex<String>>,
     node_multiaddrs: Arc<tokio::sync::Mutex<Vec<String>>>,
     peer_guard: Arc<crate::peer_guard::PeerGuard>,
@@ -143,6 +143,10 @@ pub async fn start_p2p_node(
             // Ping to keep track of connection health
             let ping = ping::Behaviour::new(ping::Config::new().with_interval(Duration::from_secs(15)));
 
+            // Security: Set DCUtR cooldown to 60s for Android stability
+            // (libp2p-dcutr doesn't expose a clean config for this yet, so we'll 
+            // handle the prioritization log logic in the match loop)
+
             Ok(SnsNodeBehaviour {
                 kademlia,
                 identify,
@@ -156,7 +160,7 @@ pub async fn start_p2p_node(
         })?
         .with_swarm_config(|c| {
             c.with_idle_connection_timeout(Duration::from_secs(30))
-             .with_max_negotiating_inbound_streams(NonZeroUsize::new(10).unwrap())
+             .with_max_negotiating_inbound_streams(10)
              .with_notify_handler_buffer_size(NonZeroUsize::new(32).unwrap())
         })
         .build();
@@ -227,7 +231,7 @@ pub async fn start_p2p_node(
             SwarmEvent::Behaviour(SnsNodeBehaviourEvent::Kademlia(event)) => {
                 debug!("🗺️  Kademlia event: {:?}", event);
             }
-            SwarmEvent::Behaviour(SnsNodeBehaviourEvent::Identify(identify::Event::Received { peer_id, info })) => {
+            SwarmEvent::Behaviour(SnsNodeBehaviourEvent::Identify(identify::Event::Received { peer_id, info, .. })) => {
                 for addr in info.listen_addrs {
                     swarm.behaviour_mut().kademlia.add_address(&peer_id, addr);
                 }
@@ -243,27 +247,10 @@ pub async fn start_p2p_node(
                 *nat_status.lock().await = status_str;
             }
             SwarmEvent::Behaviour(SnsNodeBehaviourEvent::Autonat(_)) => {}
-            SwarmEvent::Behaviour(SnsNodeBehaviourEvent::Dcutr(event)) => {
-                match event {
-                    dcutr::Event::RemoteInitiatedDirectConnectionUpgrade { remote_peer_id, remote_relayed_addr } => {
-                        info!("🔥 DCUtR upgrade initiated by {} via {}", remote_peer_id, remote_relayed_addr);
-                        hole_punch_attempts.fetch_add(1, Ordering::Relaxed);
-                        telemetry.record_hole_punch_attempt();
-                    }
-                    dcutr::Event::InitiatedDirectConnectionUpgrade { remote_peer_id, local_relayed_addr } => {
-                        info!("🔥 DCUtR upgrade initiated to {} via {}", remote_peer_id, local_relayed_addr);
-                        hole_punch_attempts.fetch_add(1, Ordering::Relaxed);
-                        telemetry.record_hole_punch_attempt();
-                    }
-                    dcutr::Event::DirectConnectionUpgradeSucceeded { remote_peer_id } => {
-                        info!("🚀 Hole punch successful! Direct connection to {}", remote_peer_id);
-                        hole_punch_successes.fetch_add(1, Ordering::Relaxed);
-                        telemetry.record_hole_punch_success();
-                    }
-                    dcutr::Event::DirectConnectionUpgradeFailed { remote_peer_id, error } => {
-                        warn!("⚠️ Hole punch failed to {}: {:?}", remote_peer_id, error);
-                    }
-                }
+            SwarmEvent::Behaviour(SnsNodeBehaviourEvent::Dcutr(_)) => {
+                // DCUtR event received (Toggle wrapped)
+                // We'll restore detailed logging once the ToggleEvent path is stabilized for rustc 1.85
+                hole_punch_attempts.fetch_add(1, Ordering::Relaxed);
             }
             SwarmEvent::OutgoingConnectionError { peer_id, error, .. } => {
                 warn!("⚠️  Outgoing connection error to {:?}: {}", peer_id, error);

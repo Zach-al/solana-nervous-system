@@ -1,7 +1,15 @@
-export const BOOTSTRAP_PEERS = [
-  'https://solnet-production.up.railway.app',
-  'https://api.devnet.solana.com',
-] as const;
+const DEFAULT_BOOTSTRAP = 'https://solnet-production.up.railway.app';
+
+export const BOOTSTRAP_PEERS = (function() {
+  let peers: string[] = [DEFAULT_BOOTSTRAP, 'https://api.devnet.solana.com'];
+  if (typeof process !== 'undefined' && process.env?.SOLNET_BOOTSTRAP_PEERS) {
+    peers = process.env.SOLNET_BOOTSTRAP_PEERS.split(',');
+  }
+  if (typeof localStorage !== 'undefined' && localStorage.getItem('SOLNET_BOOTSTRAP_PEERS')) {
+    peers = localStorage.getItem('SOLNET_BOOTSTRAP_PEERS')!.split(',');
+  }
+  return peers;
+})();
 
 export interface PeerHealth {
   url: string;

@@ -282,8 +282,7 @@ async fn rpc_handler(
     
     // ── 0. Host Header Validation ──────────────────────────
     let host = headers.get("host").and_then(|v| v.to_str().ok()).unwrap_or("unknown");
-    if !crate::attack_prevention::AttackPrevention::validate_host(host) {
-        warn!("[V2.1 SECURITY] Blocked invalid Host header: {}", host);
+    if !crate::attack_prevention::AttackPrevention::validate_host(host, &state.config) {
         return (StatusCode::BAD_REQUEST, "Invalid Host header").into_response();
     }
 
@@ -492,11 +491,11 @@ async fn onion_handler(
         let mut headers = HeaderMap::new();
         headers.insert("x-forwarded-for", HeaderValue::from_static("anon-routed"));
         
-        rpc_handler(
+        return rpc_handler(
             State(state),
             headers,
             axum::body::Bytes::from(peeled.inner_payload),
-        ).await.into_response()
+        ).await.into_response();
     } else {
         info!("Peeling RELAY layer — forwarding to {}", peeled.next_hop);
         
@@ -522,11 +521,11 @@ async fn onion_handler(
                         let body = resp.bytes().await.unwrap_or_default();
                         let mut r = (status_code, body).into_response();
                         r.headers_mut().extend(sec_headers);
-                        r
+                        return r;
                     }
                     Err(e) => {
                         error!("Onion forward failed: {}", e);
-                        (StatusCode::BAD_GATEWAY, Json(serde_json::json!({"error":format!("forward failed: {}", e)}))).into_response()
+                        return (StatusCode::BAD_GATEWAY, Json(serde_json::json!({"error":format!("forward failed: {}", e)}))).into_response();
                     }
                 }
             },
@@ -535,15 +534,14 @@ async fn onion_handler(
                 // Fallback to exit node behavior
                 let mut headers = HeaderMap::new();
                 headers.insert("x-forwarded-for", HeaderValue::from_static("anon-routed"));
-                rpc_handler(
+                return rpc_handler(
                     State(state),
                     headers,
                     axum::body::Bytes::from(peeled.inner_payload),
-                ).await.into_response()
+                ).await.into_response();
             }
         }
     }
-    r
 }
 
 async fn telemetry_install_handler(

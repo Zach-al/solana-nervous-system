@@ -20,6 +20,9 @@ pub struct Config {
     pub relay_max_circuits: usize,
     pub enable_dcutr: bool,
     pub bootstrap_nodes: Vec<String>,
+    pub env_mode: String,
+    pub whitelist_ip: String,
+    pub telemetry_url: String,
 }
 
 impl Config {
@@ -96,6 +99,10 @@ impl Config {
             relay_max_circuits,
             enable_dcutr,
             bootstrap_nodes,
+            env_mode: env::var("SOLNET_ENV").unwrap_or_else(|_| "production".to_string()),
+            whitelist_ip: env::var("SOLNET_WHITELIST_IP").unwrap_or_default(),
+            telemetry_url: env::var("SOLNET_TELEMETRY_URL")
+                .unwrap_or_else(|_| "https://solnet-production.up.railway.app/telemetry/ingest".to_string()),
         }
     }
 }

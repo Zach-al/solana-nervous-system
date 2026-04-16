@@ -139,14 +139,35 @@ impl AttackPrevention {
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 
-    pub fn validate_host(host: &str) -> bool {
-        let allowed = [
-            "localhost",
-            "127.0.0.1",
-            "solnet-production.up.railway.app",
-            "0.0.0.0",
-        ];
-        allowed.iter().any(|h| host.contains(h))
+    pub fn validate_host(host: &str, config: &crate::config::Config) -> bool {
+        // 1. Mandatory Trust: Localhost always allowed for diagnostic tools
+        if host == "localhost" || host == "127.0.0.1" || host.starts_with("localhost:") || host.starts_with("127.0.0.1:") {
+            return true;
+        }
+
+        // 2. SOLNET_WHITELIST_IP: Explicit priority trust
+        if !config.whitelist_ip.is_empty() && (host == config.whitelist_ip || host.starts_with(&format!("{}:", config.whitelist_ip))) {
+            tracing::info!("[V2.1 SECURITY] Host matched SOLNET_WHITELIST_IP: {}", host);
+            return true;
+        }
+
+        // 3. Subnet Trust (only in development)
+        if config.env_mode == "development" {
+            let is_local_subnet = host.starts_with("192.168.") || host.starts_with("10.");
+            if is_local_subnet {
+                tracing::info!("[V2.1 SECURITY] Host {} trusted via Development Subnet Rule", host);
+                return true;
+            }
+        }
+
+        // 4. Known Public Hostnames
+        let public_allowed = ["solnet-production.up.railway.app"];
+        if public_allowed.iter().any(|&h| host == h || host.starts_with(&format!("{}:", h))) {
+            return true;
+        }
+
+        tracing::warn!("[V2.1 SECURITY] Blocked invalid Host header: '{}' (Env: {})", host, config.env_mode);
+        false
     }
 }
 
