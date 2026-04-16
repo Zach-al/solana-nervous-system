@@ -168,10 +168,14 @@ pub async fn start_p2p_node(
     // Listen addresses (TCP + QUIC)
     let tcp_addr: Multiaddr = format!("/ip4/0.0.0.0/tcp/{}", config.p2p_port).parse()?;
     let quic_addr: Multiaddr = format!("/ip4/0.0.0.0/udp/{}/quic-v1", config.p2p_port).parse()?;
-    swarm.listen_on(tcp_addr)?;
-    swarm.listen_on(quic_addr)?;
 
-    info!("🕸️  P2P mesh node listening on port {}", config.p2p_port);
+    if let Err(e) = swarm.listen_on(tcp_addr) {
+        warn!("Failed to listen on TCP p2p port {}: {}. Mesh might be restricted.", config.p2p_port, e);
+    }
+    if let Err(e) = swarm.listen_on(quic_addr) {
+        warn!("Failed to listen on QUIC p2p port {}: {}. Mesh might be restricted.", config.p2p_port, e);
+    }
+
     info!("🔗 Node Multiaddr (TCP): /ip4/<your-ip>/tcp/{}/p2p/{}", config.p2p_port, local_peer_id);
     info!("🔗 Node Multiaddr (UDP): /ip4/<your-ip>/udp/{}/quic-v1/p2p/{}", config.p2p_port, local_peer_id);
 

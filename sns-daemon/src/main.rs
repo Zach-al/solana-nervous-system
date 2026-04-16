@@ -344,7 +344,7 @@ async fn main() -> Result<()> {
         }
     });
 
-    // Wait for both tasks and handle failures
+    // Wait for critical RPC proxy task, log but don't exit on P2P task completion
     tokio::select! {
         res = rpc_handle => {
             match res {
@@ -354,9 +354,15 @@ async fn main() -> Result<()> {
         }
         res = p2p_handle => {
             match res {
-                Ok(_) => eprintln!("[SOLNET] P2P node shutdown gracefully."),
-                Err(e) => eprintln!("[SOLNET] FATAL PANIC: P2P node task panicked: {:?}", e),
+                Ok(_) => eprintln!("[SOLNET] P2P node task unexpectedly completed."),
+                Err(e) => eprintln!("[SOLNET] P2P node task panicked: {:?}", e),
             }
+            // In Enterprise V2.1, we DON'T exit here. 
+            // We keep the RPC gateway alive for health checks and standalone ops.
+            tracing::warn!("P2P mesh node is offline, but RPC Gateway remains active.");
+            
+            // Just wait forever to keep the main task alive if RPC is still running
+            std::future::pending::<()>().await;
         }
     }
 
