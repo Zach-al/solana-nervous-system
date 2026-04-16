@@ -26,6 +26,7 @@ function formatUptime(seconds: number): string {
 export default function StatsPanel() {
   const [stats, setStats] = useState<NodeStats | null>(null);
   const [connecting, setConnecting] = useState(false);
+  const [error, setError] = useState(false);
   const [prevRequests, setPrevRequests] = useState(0);
   const [flash, setFlash] = useState(false);
   const uptime = useRef(0);
@@ -38,6 +39,7 @@ export default function StatsPanel() {
       const data: NodeStats = await res.json();
       setStats(data);
       setConnecting(false);
+      setError(false);
 
       if (data.requests_served > prevRequests) {
         setFlash(true);
@@ -47,6 +49,7 @@ export default function StatsPanel() {
       uptime.current = data.uptime_seconds;
     } catch {
       setConnecting(true);
+      setError(true);
     }
   }, [prevRequests]);
 
@@ -71,14 +74,16 @@ export default function StatsPanel() {
       <div className="metric-block">
         <div className="metric-label">NODE IDENTITY</div>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-          <div className="metric-value" style={{ fontSize: '14px' }}>{stats?.node_name ?? 'SNS_PRIMARY'}</div>
+          <div className="metric-value" style={{ fontSize: '14px', color: error ? '#ef4444' : 'inherit' }}>
+            {error ? 'OFFLINE' : (stats?.node_name ?? 'SNS_PRIMARY')}
+          </div>
           <div className="status-online">
-            <span className="status-dot" style={{ background: connecting ? 'var(--amber)' : 'var(--neon-green)' }} />
-            {connecting ? 'CONNECTING' : 'ONLINE'}
+            <span className="status-dot" style={{ background: error ? '#ef4444' : (connecting ? 'var(--amber)' : 'var(--neon-green)') }} />
+            {error ? 'DISCONNECTED' : (connecting ? 'CONNECTING' : 'ONLINE')}
           </div>
         </div>
         <div style={{ fontFamily: 'var(--font-technical)', fontSize: '10px', color: 'var(--text-dim)', wordBreak: 'break-all' }}>
-          ID: {stats?.node_id ?? 'IDENTITY_INITIALIZING'}
+          ID: {error ? 'NODE_UNREACHABLE' : (stats?.node_id ?? 'IDENTITY_INITIALIZING')}
         </div>
       </div>
 

@@ -40,11 +40,19 @@ export async function secureFetch(
   const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS)
 
   try {
+    // ── Local Node Injection ──────────────────────────────
+    let customNodeUrl = '';
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      customNodeUrl = params.get('node') || '';
+    }
+
     const response = await fetch(url, {
       ...options,
       signal: controller.signal,
       headers: {
         'Content-Type': 'application/json',
+        ...(customNodeUrl ? { 'X-SNS-Node-URL': customNodeUrl } : {}),
         ...options.headers,
       },
     })

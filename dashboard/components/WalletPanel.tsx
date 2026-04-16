@@ -13,6 +13,7 @@ export default function WalletPanel() {
 
   const [settling, setSettling] = useState(false);
   const [settled, setSettled] = useState(false);
+  const [error, setError] = useState(false);
 
   useEffect(() => {
     const fetchWallet = async () => {
@@ -26,9 +27,13 @@ export default function WalletPanel() {
             staked: data.lifetime_earned_sol,
             rewards_pending: data.pending_sol,
           });
+          setError(false);
+        } else {
+          setError(true);
         }
       } catch (err) {
-          console.error('Failed to fetch wallet status', err);
+        setError(true);
+        console.error('Failed to fetch wallet status', err);
       }
     };
     fetchWallet();
@@ -66,8 +71,12 @@ export default function WalletPanel() {
       <div className="metric-block">
         <div className="metric-label">OPERATOR_WALLET</div>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-          <div style={{ fontFamily: 'var(--font-technical)', fontSize: '13px', fontWeight: 700 }}>{wallet.pubkey}</div>
-          <div style={{ fontSize: '10px', color: 'var(--neon-green)', fontWeight: 700 }}>CONNECTED</div>
+          <div style={{ fontFamily: 'var(--font-technical)', fontSize: '13px', fontWeight: 700, color: error ? '#ef4444' : 'inherit' }}>
+            {error ? 'NODE_OFFLINE' : wallet.pubkey}
+          </div>
+          <div style={{ fontSize: '10px', color: error ? '#ef4444' : 'var(--neon-green)', fontWeight: 700 }}>
+            {error ? 'DISCONNECTED' : 'CONNECTED'}
+          </div>
         </div>
         <div className="divider" style={{ opacity: 0.1, margin: '12px 0' }} />
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>

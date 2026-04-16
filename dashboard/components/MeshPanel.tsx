@@ -19,6 +19,7 @@ interface MeshStatus {
 
 export default function MeshPanel() {
   const [status, setStatus] = useState<MeshStatus | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
@@ -28,8 +29,12 @@ export default function MeshPanel() {
         if (res.ok) {
           const data = await res.json();
           setStatus(data);
+          setError(null);
+        } else {
+          setError(`HTTP_${res.status}`);
         }
       } catch (err) {
+        setError('OFFLINE');
         console.error('Failed to fetch mesh status', err);
       }
     };
@@ -54,10 +59,25 @@ export default function MeshPanel() {
     return nat;
   };
 
+  if (error) {
+    return (
+      <div className="stats-panel" style={{ minHeight: '300px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+        <p style={{ color: '#ef4444', fontSize: '10px', fontWeight: 700 }}>[NODE_CONNECTION_FAILURE]</p>
+        <p style={{ color: 'var(--text-dim)', fontSize: '9px' }}>DAEMON_STATUS: {error}</p>
+        <button 
+          onClick={() => window.location.reload()}
+          style={{ marginTop: '12px', background: 'transparent', border: '1px solid var(--border-color)', color: 'var(--text-dim)', fontSize: '9px', padding: '4px 8px', cursor: 'pointer' }}
+        >
+          RETRY_CONNECTION
+        </button>
+      </div>
+    );
+  }
+
   if (!status) {
     return (
       <div className="stats-panel" style={{ minHeight: '300px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <p style={{ color: 'var(--text-dim)' }}>INITIALIZING MESH PROTOCOLS...</p>
+        <p style={{ color: 'var(--text-dim)', fontSize: '10px' }}>INITIALIZING MESH PROTOCOLS...</p>
       </div>
     );
   }

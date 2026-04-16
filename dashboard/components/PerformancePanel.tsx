@@ -28,6 +28,7 @@ interface PerformanceData {
 
 export default function PerformancePanel() {
     const [data, setData] = useState<PerformanceData | null>(null);
+    const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
         const fetchData = async () => {
@@ -36,8 +37,12 @@ export default function PerformancePanel() {
                 if (res.ok) {
                     const json = await res.json();
                     setData(json);
+                    setError(null);
+                } else {
+                    setError(`HTTP_${res.status}`);
                 }
             } catch (e) {
+                setError('OFFLINE');
                 console.error("Failed to fetch performance stats", e);
             }
         };
@@ -45,6 +50,13 @@ export default function PerformancePanel() {
         const interval = setInterval(fetchData, 5000);
         return () => clearInterval(interval);
     }, []);
+
+    if (error) return (
+        <div className="metric-block" style={{ height: '300px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+            <div className="metric-label" style={{ color: '#ef4444' }}>[METRICS_OFFLINE]</div>
+            <div style={{ color: 'var(--text-dim)', fontSize: '10px' }}>UPSTREAM_FAILURE: {error}</div>
+        </div>
+    );
 
     if (!data) return (
         <div className="metric-block" style={{ height: '300px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
