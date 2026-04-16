@@ -17,6 +17,8 @@ pub mod latency_engine;
 pub mod platform;
 pub mod battery_guard;
 pub mod mobile_peer;
+pub mod peer_guard;
+pub mod telemetry;
 
 use anyhow::Result;
 
@@ -142,6 +144,24 @@ async fn main() -> Result<()> {
         }
     });
 
+    let peer_guard = Arc::new(peer_guard::PeerGuard::new());
+    let pg_cleanup = peer_guard.clone();
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(tokio::time::Duration::from_secs(3600)).await;
+            pg_cleanup.cleanup();
+        }
+    });
+
+    let telemetry = Arc::new(telemetry::TelemetryCollector::new());
+    let tel_clone = telemetry.clone();
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(tokio::time::Duration::from_secs(300)).await; // 5 min
+            tel_clone.send_heartbeat().await;
+        }
+    });
+
     // Spawn cache eviction task (V2.1)
     let le_cleanup = latency_engine.clone();
     tokio::spawn(async move {
@@ -211,6 +231,8 @@ async fn main() -> Result<()> {
     let hole_punch_successes_rpc = hole_punch_successes.clone();
     let nat_status_rpc = nat_status.clone();
     let node_multiaddrs_rpc = node_multiaddrs.clone();
+    let peer_guard_rpc = peer_guard.clone();
+    let telemetry_rpc = telemetry.clone();
 
     let rpc_handle = tokio::spawn(async move {
         let node_id = uuid::Uuid::new_v4().to_string();
@@ -235,6 +257,8 @@ async fn main() -> Result<()> {
             hole_punch_successes_rpc,
             nat_status_rpc,
             node_multiaddrs_rpc,
+            peer_guard_rpc,
+            telemetry_rpc,
         ).await {
             tracing::error!("RPC proxy error: {}", e);
         }
@@ -265,6 +289,8 @@ async fn main() -> Result<()> {
             hole_punch_successes,
             nat_status,
             node_multiaddrs,
+            peer_guard,
+            telemetry,
         ).await {
             tracing::error!("P2P node error: {}", e);
         }

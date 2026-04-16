@@ -106,6 +106,23 @@ cargo run --release
 Your device joins the mesh and starts earning SOL 
 automatically for every request it routes.
 
+## Privacy & Telemetry
+
+solnet-sdk sends anonymous performance metrics:
+- Request success/failure counts
+- Hole punch success rates
+- Latency percentiles
+- SDK version
+
+No IP addresses. No wallet addresses. No PII. Ever.
+
+Opt out at any time:
+// Node.js
+process.env.SOLNET_NO_TELEMETRY = 'true'
+
+// Browser
+localStorage.setItem('SOLNET_NO_TELEMETRY', 'true')
+
 ## Links
 - GitHub: https://github.com/Zach-al/solana-nervous-system
 - Dashboard: https://solnet.vercel.app

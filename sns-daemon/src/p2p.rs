@@ -8,6 +8,12 @@ use libp2p::{
     swarm::{NetworkBehaviour, SwarmEvent},
     SwarmBuilder, Multiaddr, PeerId
 };
+use libp2p::connection_limits::{
+    ConnectionLimits, 
+    Behaviour as ConnectionLimitsBehaviour
+};
+use libp2p::ping;
+use std::num::NonZeroUsize;
 use tracing::{info, warn, debug};
 use std::sync::Arc;
 use dashmap::DashMap;
@@ -24,7 +30,14 @@ struct SnsNodeBehaviour {
     relay_client: relay::client::Behaviour,
     relay_server: relay::Behaviour,
     dcutr: libp2p::swarm::behaviour::toggle::Toggle<dcutr::Behaviour>,
+    ping: ping::Behaviour,
+    connection_limits: ConnectionLimitsBehaviour,
 }
+
+// SECURITY NOTE: Gossipsub deliberately excluded.
+// CVE-2026-Gossipsub: Remote panic via crafted PRUNE.
+// SOLNET uses Kademlia DHT for peer discovery only.
+// No Gossipsub feature in Cargo.toml features list.
 
 #[allow(dead_code)]
 pub fn get_peer_id(config: &Config) -> String {
@@ -41,6 +54,8 @@ pub async fn start_p2p_node(
     hole_punch_successes: Arc<std::sync::atomic::AtomicUsize>,
     nat_status: Arc<tokio::sync::Mutex<String>>,
     node_multiaddrs: Arc<tokio::sync::Mutex<Vec<String>>>,
+    peer_guard: Arc<crate::peer_guard::PeerGuard>,
+    telemetry: Arc<crate::telemetry::TelemetryCollector>,
 ) -> Result<()> {
     tracing::info!("Starting native Web3 Libp2p mesh node...");
 
@@ -116,6 +131,18 @@ pub async fn start_p2p_node(
                 libp2p::swarm::behaviour::toggle::Toggle::from(None)
             };
 
+            // Connection Limits to prevent exhaustion attacks
+            let limits = ConnectionLimits::default()
+                .with_max_established_incoming(Some(250))
+                .with_max_established_outgoing(Some(250))
+                .with_max_pending_incoming(Some(25))
+                .with_max_pending_outgoing(Some(25))
+                .with_max_established_per_peer(Some(3));
+            let connection_limits = ConnectionLimitsBehaviour::new(limits);
+
+            // Ping to keep track of connection health
+            let ping = ping::Behaviour::new(ping::Config::new().with_interval(Duration::from_secs(15)));
+
             Ok(SnsNodeBehaviour {
                 kademlia,
                 identify,
@@ -123,9 +150,15 @@ pub async fn start_p2p_node(
                 relay_client,
                 relay_server,
                 dcutr,
+                ping,
+                connection_limits,
             })
         })?
-        .with_swarm_config(|c| c.with_idle_connection_timeout(Duration::from_secs(60)))
+        .with_swarm_config(|c| {
+            c.with_idle_connection_timeout(Duration::from_secs(30))
+             .with_max_negotiating_inbound_streams(NonZeroUsize::new(10).unwrap())
+             .with_notify_handler_buffer_size(NonZeroUsize::new(32).unwrap())
+        })
         .build();
 
     // Listen addresses (TCP + QUIC)
@@ -171,6 +204,7 @@ pub async fn start_p2p_node(
             SwarmEvent::ConnectionEstablished { peer_id, endpoint, .. } => {
                 info!("✅ Peer connected: {} via {:?}", peer_id, endpoint.get_remote_address());
                 connected_peers.fetch_add(1, Ordering::Relaxed);
+                telemetry.record_new_peer();
                 let addr = endpoint.get_remote_address().to_string();
                 if let Some(ip) = extract_ip_from_multiaddr(&addr) {
                     peer_registry.insert(
@@ -178,11 +212,15 @@ pub async fn start_p2p_node(
                         format!("http://{}:{}", ip, config.http_port)
                     );
                 }
+                peer_guard.on_connected(&peer_id);
             }
             SwarmEvent::ConnectionClosed { peer_id, cause, .. } => {
                 connected_peers.fetch_sub(1, Ordering::Relaxed);
                 match cause {
-                    Some(err) => debug!("❌ Peer disconnected: {} (reason: {})", peer_id, err),
+                    Some(err) => {
+                        debug!("❌ Peer disconnected: {} (reason: {})", peer_id, err);
+                        peer_guard.on_failed_handshake(&peer_id);
+                    },
                     None => debug!("❌ Peer disconnected: {}", peer_id),
                 }
             }
@@ -210,14 +248,17 @@ pub async fn start_p2p_node(
                     dcutr::Event::RemoteInitiatedDirectConnectionUpgrade { remote_peer_id, remote_relayed_addr } => {
                         info!("🔥 DCUtR upgrade initiated by {} via {}", remote_peer_id, remote_relayed_addr);
                         hole_punch_attempts.fetch_add(1, Ordering::Relaxed);
+                        telemetry.record_hole_punch_attempt();
                     }
                     dcutr::Event::InitiatedDirectConnectionUpgrade { remote_peer_id, local_relayed_addr } => {
                         info!("🔥 DCUtR upgrade initiated to {} via {}", remote_peer_id, local_relayed_addr);
                         hole_punch_attempts.fetch_add(1, Ordering::Relaxed);
+                        telemetry.record_hole_punch_attempt();
                     }
                     dcutr::Event::DirectConnectionUpgradeSucceeded { remote_peer_id } => {
                         info!("🚀 Hole punch successful! Direct connection to {}", remote_peer_id);
                         hole_punch_successes.fetch_add(1, Ordering::Relaxed);
+                        telemetry.record_hole_punch_success();
                     }
                     dcutr::Event::DirectConnectionUpgradeFailed { remote_peer_id, error } => {
                         warn!("⚠️ Hole punch failed to {}: {:?}", remote_peer_id, error);

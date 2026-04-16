@@ -3,6 +3,54 @@ import { PeerDiscovery, PeerHealth, BOOTSTRAP_PEERS } from './bootstrap';
 
 export { PeerDiscovery, PeerHealth, BOOTSTRAP_PEERS } from './bootstrap';
 
+// Whitelist of allowed Solana RPC methods
+const ALLOWED_METHODS = new Set([
+  'getAccountInfo', 'getBalance', 'getBlock',
+  'getBlockHeight', 'getBlockProduction',
+  'getBlockCommitment', 'getBlocks',
+  'getBlockTime', 'getClusterNodes',
+  'getEpochInfo', 'getEpochSchedule',
+  'getFeeForMessage', 'getFirstAvailableBlock',
+  'getGenesisHash', 'getHealth', 'getIdentity',
+  'getInflationGovernor', 'getInflationRate',
+  'getInflationReward', 'getLargestAccounts',
+  'getLatestBlockhash', 'getLeaderSchedule',
+  'getMinimumBalanceForRentExemption',
+  'getMultipleAccounts', 'getProgramAccounts',
+  'getRecentPerformanceSamples',
+  'getRecentPrioritizationFees',
+  'getSignaturesForAddress', 'getSignatureStatuses',
+  'getSlot', 'getSlotLeader', 'getSlotLeaders',
+  'getSupply', 'getTokenAccountBalance',
+  'getTokenAccountsByDelegate',
+  'getTokenAccountsByOwner',
+  'getTokenLargestAccounts', 'getTokenSupply',
+  'getTransaction', 'getTransactionCount',
+  'getVersion', 'getVoteAccounts',
+  'isBlockhashValid', 'minimumLedgerSlot',
+  'requestAirdrop', 'sendTransaction',
+  'simulateTransaction',
+])
+
+function validateRpcMethod(method: string): void {
+  // Validate method is string
+  if (typeof method !== 'string') {
+    throw new Error('RPC method must be a string')
+  }
+  // Validate length
+  if (method.length > 100) {
+    throw new Error('RPC method name too long')
+  }
+  // Validate against whitelist
+  if (!ALLOWED_METHODS.has(method)) {
+    throw new Error(`RPC method not allowed: ${method}`)
+  }
+  // No shell special characters
+  if (/[;&|`$<>\\]/.test(method)) {
+    throw new Error('Invalid characters in method name')
+  }
+}
+
 export interface SolnetConfig extends ConnectionConfig {
   endpoint?: string;
   fallback?: string;
@@ -47,6 +95,37 @@ export class SolnetConnection extends Connection {
     }
   }
 
+  private async reportMetric(
+    event: string,
+    data: Record<string, unknown>
+  ): Promise<void> {
+    if (
+      typeof process !== 'undefined' &&
+      process.env?.SOLNET_NO_TELEMETRY === 'true'
+    ) return
+    if (
+      typeof localStorage !== 'undefined' &&
+      localStorage.getItem('SOLNET_NO_TELEMETRY')
+    ) return
+
+    try {
+      const payload = {
+        v: '1.2.1',
+        event,
+        ...data,
+      }
+      fetch('https://solnet-production.up.railway.app/telemetry/ingest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        keepalive: true,
+      }).catch(() => {})
+    } catch {
+      // Telemetry never affects main functionality
+    }
+  }
+
+
   /**
    * Override _rpcRequest to add SOLNET features:
    * 1. Automatic peer discovery + failover
@@ -55,6 +134,7 @@ export class SolnetConnection extends Connection {
    */
   // @ts-ignore - Internal web3.js method override
   async _rpcRequest(method: string, args: any[]): Promise<any> {
+    validateRpcMethod(method);
     await this.ensureInitialized();
     const start = Date.now();
 
@@ -106,6 +186,12 @@ export class SolnetConnection extends Connection {
       if (data.solnet_proof) {
         console.log(`[SOLNET] ✅ Verified: ${data.solnet_proof.commitment} (${latency}ms)`);
       }
+
+      this.reportMetric('request_success', {
+        method,
+        latencyMs: latency,
+        cached: !!data.proof,
+      });
 
       return data.result !== undefined ? data : { result: data };
     } catch (error) {
