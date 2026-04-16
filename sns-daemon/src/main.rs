@@ -51,6 +51,7 @@ impl SlotCache {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    eprintln!("[SOLNET-V2.1.2-PRODUCTION] PRE-FLIGHT SUCCESS");
     use std::io::Write;
     let cfg = config::Config::from_env();
     

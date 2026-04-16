@@ -141,7 +141,9 @@ impl AttackPrevention {
 
     pub fn validate_host(host: &str, config: &crate::config::Config) -> bool {
         // 1. Mandatory Trust: Localhost always allowed for diagnostic tools
-        if host == "localhost" || host == "127.0.0.1" || host == "[::1]" || host.starts_with("localhost:") || host.starts_with("127.0.0.1:") || host.starts_with("[::1]:") {
+        if host == "localhost" || host == "127.0.0.1" || host == "[::1]" || 
+           host == "healthcheck.railway.app" ||
+           host.starts_with("localhost:") || host.starts_with("127.0.0.1:") || host.starts_with("[::1]:") {
             return true;
         }
 
