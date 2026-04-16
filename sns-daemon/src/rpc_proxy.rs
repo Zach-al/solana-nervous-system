@@ -181,12 +181,6 @@ pub fn create_rpc_router(
         .allow_methods(Any)
         .allow_headers(Any);
 
-    let rpc_service = tower::ServiceBuilder::new()
-        .layer(axum::error_handling::HandleErrorLayer::new(|_: tower::BoxError| async {
-            StatusCode::REQUEST_TIMEOUT
-        }))
-        .layer(tower::timeout::TimeoutLayer::new(std::time::Duration::from_secs(5)));
-
     Router::new()
         .route("/", post(rpc_handler).get(root_get_handler))
         .route("/stats", get(stats_handler))
@@ -200,9 +194,12 @@ pub fn create_rpc_router(
         .route("/settle", post(settle_handler))
         .route("/mobile/register", post(mobile_register_handler))
         .route("/mobile/peers", get(mobile_peers_handler))
-        .layer(rpc_service)
         .route("/health", get(health_handler))
         .route("/telemetry/ingest", post(telemetry_ingest_handler))
+        .layer(axum::middleware::from_fn(|req: axum::extract::Request, next: axum::middleware::Next| async move {
+            tracing::info!("--> {} {}", req.method(), req.uri().path());
+            next.run(req).await
+        }))
         .layer(cors)
         .with_state(state)
 }
@@ -638,24 +635,16 @@ async fn settle_handler(State(state): State<SharedState>) -> impl IntoResponse {
 // Health endpoint
 // ─────────────────────────────────────────────────────────────
 
-async fn health_handler(
-    State(state): State<SharedState>,
-) -> impl IntoResponse {
-    tracing::info!("[HEALTH] Check hit from remote edge");
-    let uptime = (Utc::now() - state.stats.lock().await.started_at).num_seconds() as u64;
+async fn health_handler() -> impl IntoResponse {
+    tracing::info!("[HEALTH] Check hit from remote edge (Lock-Free)");
     
-    // Always return 200 with valid JSON
-    // Never return 500 from health endpoint
-    // Even if Solana RPC is down, the node is healthy
+    // Lock-free static response for maximum reliability
     (
         axum::http::StatusCode::OK,
         axum::Json(serde_json::json!({
             "status": "ok",
             "version": env!("CARGO_PKG_VERSION"),
-            "node_id": state.stats.lock().await.node_id,
-            "uptime_seconds": uptime,
-            "requests_served": state.stats.lock().await.requests_served,
-            "earnings_lamports": state.stats.lock().await.earnings_lamports,
+            "mode": "lock-free"
         }))
     )
 }

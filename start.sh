@@ -33,7 +33,7 @@ else
 fi
 
 echo "[DIAG] Listing Active Listeners before exec:"
-cat /proc/net/tcp | head -n 5 || echo "proc net tcp unavailable"
+ss -tulpn || netstat -tulpn || echo "network audit unavailable"
 
 echo "[INFO] Executing $TARGET_BIN..."
 chmod +x "$TARGET_BIN"
