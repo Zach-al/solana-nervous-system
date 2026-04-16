@@ -206,7 +206,7 @@ pub async fn start_rpc_proxy(
         .layer(cors)
         .with_state(state);
 
-    let addr = format!("0.0.0.0:{}", config.http_port);
+    let addr = format!("[::]:{}", config.http_port);
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     info!("RPC proxy listening on http://{}", addr);
 

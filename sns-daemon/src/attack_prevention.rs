@@ -141,7 +141,7 @@ impl AttackPrevention {
 
     pub fn validate_host(host: &str, config: &crate::config::Config) -> bool {
         // 1. Mandatory Trust: Localhost always allowed for diagnostic tools
-        if host == "localhost" || host == "127.0.0.1" || host.starts_with("localhost:") || host.starts_with("127.0.0.1:") {
+        if host == "localhost" || host == "127.0.0.1" || host == "[::1]" || host.starts_with("localhost:") || host.starts_with("127.0.0.1:") || host.starts_with("[::1]:") {
             return true;
         }
 
@@ -161,8 +161,12 @@ impl AttackPrevention {
         }
 
         // 4. Known Public Hostnames
-        let public_allowed = ["solnet-production.up.railway.app"];
-        if public_allowed.iter().any(|&h| host == h || host.starts_with(&format!("{}:", h))) {
+        let public_allowed = [
+            "solnet-production.up.railway.app",
+            "up.railway.app",
+            "railway.internal"
+        ];
+        if public_allowed.iter().any(|&h| host == h || host.ends_with(&format!(".{}", h)) || host.starts_with(&format!("{}:", h))) {
             return true;
         }
 
