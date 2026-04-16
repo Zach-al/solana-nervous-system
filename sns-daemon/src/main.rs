@@ -52,14 +52,16 @@ impl SlotCache {
 #[tokio::main]
 async fn main() -> Result<()> {
     use std::io::Write;
-    println!("\n\n[SOLNET-V2.1.2-PRODUCTION] INITIALIZING...");
-    std::io::stdout().flush().ok();
-    
     let cfg = config::Config::from_env();
-    println!("[SOLNET] System Parameters Loading...");
-    println!("[SOLNET] ENV PORT detected: {:?}", std::env::var("PORT"));
-    println!("[SOLNET] Resolved HTTP Port: {}", cfg.http_port);
-    std::io::stdout().flush().ok();
+    
+    eprintln!("\n\n");
+    eprintln!("#########################################################");
+    eprintln!("## [SOLNET-V2.1.2-PRODUCTION] INITIALIZING...         ##");
+    eprintln!("#########################################################");
+    eprintln!("[SOLNET] System Parameters Loading...");
+    eprintln!("[SOLNET] ENV PORT detected: {:?}", std::env::var("PORT"));
+    eprintln!("[SOLNET] Resolved HTTP Port: {}", cfg.http_port);
+    std::io::stderr().flush().ok();
 
     // Initialize tracing subscriber with env-filter
     tracing_subscriber::registry()

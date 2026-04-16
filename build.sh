@@ -10,20 +10,21 @@ cd sns-daemon
 cargo build --release
 
 echo "Preparing deployment artifacts..."
-mkdir -p ../bin
+# Versioned binary name to break caches
+FINAL_BIN="SOLNET_DAEMON_V212"
 
 # Handle both workspace and non-workspace build output paths
 if [ -f target/release/sns-daemon ]; then
-  cp target/release/sns-daemon ../bin/sns-daemon
+  cp target/release/sns-daemon "../$FINAL_BIN"
 elif [ -f ../target/release/sns-daemon ]; then
-  cp ../target/release/sns-daemon ../bin/sns-daemon
+  cp ../target/release/sns-daemon "../$FINAL_BIN"
 else
   echo "ERROR: sns-daemon binary not found after build!"
   exit 1
 fi
 
-chmod +x ../bin/sns-daemon
-echo "Final artifact status:"
-ls -lh ../bin/sns-daemon
+chmod +x "../$FINAL_BIN"
+echo "Final artifact status at root:"
+ls -lh "../$FINAL_BIN"
 
 echo "Build complete."
