@@ -90,16 +90,24 @@ impl Platform {
             },
             PlatformTarget::MacOS |
             PlatformTarget::Linux |
-            PlatformTarget::Windows => PlatformConfig {
-                max_concurrent_requests: 500,
-                batch_interval: Duration::from_secs(3600),
-                p2p_enabled: true,
-                cache_size_mb: 256,
-                http_port: 9000,
-                p2p_port: 9001,
-                battery_mode: false,
-                log_level: "info",
-                platform_name: "Desktop",
+            PlatformTarget::Windows => {
+                let port = std::env::var("PORT")
+                    .or_else(|_| std::env::var("HTTP_PORT"))
+                    .ok()
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(8080);
+
+                PlatformConfig {
+                    max_concurrent_requests: 500,
+                    batch_interval: Duration::from_secs(3600),
+                    p2p_enabled: true,
+                    cache_size_mb: 256,
+                    http_port: port,
+                    p2p_port: 9001,
+                    battery_mode: false,
+                    log_level: "info",
+                    platform_name: "Desktop",
+                }
             },
         }
     }

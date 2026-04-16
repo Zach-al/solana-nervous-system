@@ -82,7 +82,7 @@ impl Config {
                 .or_else(|_| env::var("HTTP_PORT"))
                 .ok()
                 .and_then(|v| v.parse().ok())
-                .unwrap_or(9000),
+                .unwrap_or(8080),
             p2p_port: env::var("P2P_PORT")
                 .ok()
                 .and_then(|v| v.parse().ok())
