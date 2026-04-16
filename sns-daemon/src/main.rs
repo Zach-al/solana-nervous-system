@@ -82,6 +82,7 @@ async fn main() -> Result<()> {
     let cfg_clone = cfg.clone();
     let cfg_clone2 = cfg.clone();
 
+
     // Instantiate SlotCache
     let slot_cache = SlotCache::new();
     let cache_clone = slot_cache.clone();
@@ -142,9 +143,6 @@ async fn main() -> Result<()> {
     let peer_registry_clone = peer_registry.clone();
     let daily_salt_clone = daily_salt.clone();
     let peer_registry_clone2 = peer_registry.clone();
-
-    // ── V1.2 Mobile Peer Registration ───────────────────────
-    // Removed: Libp2p handles mobile targets natively using AutoNAT & DCUtR.
 
     // Spawn security cleanup task
     let ap_cleanup = attack_prevention.clone();
@@ -245,9 +243,12 @@ async fn main() -> Result<()> {
     let peer_guard_rpc = peer_guard.clone();
     let telemetry_rpc = telemetry.clone();
 
+    // For labels in Tasks
+    let cfg_for_rpc = cfg.clone();
+
     let rpc_handle = tokio::spawn(async move {
         let node_id = uuid::Uuid::new_v4().to_string();
-        if let Err(e) = rpc_proxy::start_rpc_proxy(
+        let app = rpc_proxy::create_rpc_router(
             cfg_clone, 
             node_id, 
             slot_cache, 
@@ -270,9 +271,38 @@ async fn main() -> Result<()> {
             node_multiaddrs_rpc,
             peer_guard_rpc,
             telemetry_rpc,
-        ).await {
-            tracing::error!("RPC proxy error: {}", e);
-        }
+        );
+
+        // Task 3: Railway Port Binding
+        // MUST bind to 0.0.0.0 not 127.0.0.1
+        // Railway routes external traffic to 0.0.0.0:$PORT
+        let bind_addr = format!("0.0.0.0:{}", cfg_for_rpc.http_port);
+
+        let listener = tokio::net::TcpListener::bind(&bind_addr)
+            .await
+            .unwrap_or_else(|e| {
+                panic!(
+                    "FATAL: Cannot bind to {} — {}\n\
+                     Check PORT or HTTP_PORT env var",
+                    bind_addr, e
+                )
+            });
+
+        tracing::info!(
+            "╔══════════════════════════════════╗"
+        );
+        tracing::info!(
+            "║  SOLNET daemon bound to {:<10} ║",
+            bind_addr
+        );
+        tracing::info!(
+            "╚══════════════════════════════════╝"
+        );
+
+        axum::serve(listener, app)
+            .with_graceful_shutdown(shutdown_signal())
+            .await
+            .unwrap();
     });
 
     // Clone platform_config fields for p2p task (can't move PlatformConfig across threads easily)
@@ -307,24 +337,54 @@ async fn main() -> Result<()> {
         }
     });
 
-    // Wait for both tasks and handle failures as fatal
+    // Wait for both tasks and handle failures
     tokio::select! {
         res = rpc_handle => {
             match res {
-                Ok(_) => eprintln!("[SOLNET] FATAL ERROR: RPC proxy terminated unexpectedly without error logic!"),
+                Ok(_) => eprintln!("[SOLNET] RPC proxy shutdown gracefully."),
                 Err(e) => eprintln!("[SOLNET] FATAL PANIC: RPC proxy task panicked: {:?}", e),
             }
         }
         res = p2p_handle => {
             match res {
-                Ok(_) => eprintln!("[SOLNET] FATAL ERROR: P2P node terminated unexpectedly!"),
+                Ok(_) => eprintln!("[SOLNET] P2P node shutdown gracefully."),
                 Err(e) => eprintln!("[SOLNET] FATAL PANIC: P2P node task panicked: {:?}", e),
             }
         }
     }
 
-    eprintln!("[SOLNET] Daemon process exiting due to critical failure.");
-    std::process::exit(1);
+    eprintln!("[SOLNET] Daemon process exiting.");
+    std::process::exit(0);
+}
+
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        tokio::signal::ctrl_c()
+            .await
+            .expect("Failed to install CTRL+C handler");
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        tokio::signal::unix::signal(
+            tokio::signal::unix::SignalKind::terminate()
+        )
+        .expect("Failed to install signal handler")
+        .recv()
+        .await;
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => {
+            tracing::info!("SIGINT received — shutting down");
+        }
+        _ = terminate => {
+            tracing::info!("SIGTERM received — shutting down");
+        }
+    }
 }
 
 fn print_banner(

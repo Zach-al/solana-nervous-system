@@ -1,13 +1,13 @@
 {
-  "$schema": "https://railway.app/railway.schema.json",
   "build": {
-    "builder": "nixpacks",
-    "buildCommand": "bash build.sh",
-    "watchPatterns": ["sns-daemon/**", "build.sh"]
+    "builder": "NIXPACKS",
+    "buildCommand": "cd sns-daemon && CARGO_BUILD_JOBS=2 cargo build --release"
   },
   "deploy": {
-    "startCommand": "bash start.sh",
-    "restartPolicyType": "ON_FAILURE",
-    "restartPolicyMaxRetries": 10
+    "startCommand": "cd sns-daemon && ./target/release/sns-daemon",
+    "restartPolicyType": "ON_FAILURE", 
+    "restartPolicyMaxRetries": 5,
+    "healthcheckPath": "/health",
+    "healthcheckTimeout": 60
   }
 }

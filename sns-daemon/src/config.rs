@@ -78,11 +78,11 @@ impl Config {
         Self {
             solana_rpc_url: env::var("SOLANA_RPC_URL")
                 .unwrap_or_else(|_| "https://api.devnet.solana.com".to_string()),
-            http_port: env::var("PORT")
-                .or_else(|_| env::var("HTTP_PORT"))
-                .ok()
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(8080),
+            http_port: std::env::var("PORT")
+                .or_else(|_| std::env::var("HTTP_PORT"))
+                .unwrap_or_else(|_| "9000".to_string())
+                .parse::<u16>()
+                .unwrap_or(9000),
             p2p_port: env::var("P2P_PORT")
                 .ok()
                 .and_then(|v| v.parse().ok())

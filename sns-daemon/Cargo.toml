@@ -1,6 +1,6 @@
 [package]
 name = "sns-daemon"
-version = "2.1.0"
+version = "2.1.1"
 edition = "2021"
 authors = ["SOLNET Enterprise"]
 description = "Enterprise-grade decentralized RPC mesh daemon"
@@ -19,24 +19,9 @@ dashmap = "6.0.1"
 dotenv = "0.15.0"
 futures = "0.3.29"
 hex = "0.4.3"
-libp2p = { version = "0.54", features = [
-    "kad",
-    "identify", 
-    "autonat",
-    "relay",
-    "dcutr",
-    "noise",
-    "yamux",
-    "tcp",
-    "quic",
-    "tokio",
-    "macros",
-    "ping"
-] }
-libp2p-yamux = "0.46"
-libp2p-identify = "0.45"
-libp2p-kad = "0.46"
-reqwest = { version = "0.11.22", features = ["json", "rustls-tls"] }
+reqwest = { version = "=0.11.22", features = ["json", "rustls-tls"] }
+url = "=2.5.0"
+idna = "=0.5.0"
 serde = { version = "1.0.190", features = ["derive"] }
 serde_json = "1.0.108"
 sha2 = "0.10.8"
@@ -46,7 +31,7 @@ tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
 uuid = { version = "1.5.0", features = ["v4", "serde"] }
 rand = "0.8.5"
-ed25519-dalek = "1.0.1"
+ed25519-dalek = "2.1.0"
 x25519-dalek = { version = "2.0.0", features = ["static_secrets"] }
 aes-gcm = "0.10.3"
 hmac = "0.12.1"
@@ -56,6 +41,27 @@ icu_collections = "=1.5.0"
 icu_locid = "=1.5.0"
 icu_normalizer = "=1.5.0"
 icu_properties = "=1.5.0"
+openssl = { version = "0.10.66", optional = true }
+rustls = "0.23"
+libp2p-connection-limits = "0.6.0"
+
+# Security: explicit feature control
+[dependencies.libp2p]
+version = "0.54.1"
+features = [
+    "kad",
+    "identify",
+    "autonat", 
+    "relay",
+    "dcutr",
+    "noise",
+    "yamux",
+    "tcp",
+    "quic",
+    "tokio",
+    "macros",
+    "ping",
+]
 
 [features]
 # Cleaned up features
@@ -72,8 +78,11 @@ opt-level = 3
 lto = true
 codegen-units = 1
 panic = "abort"
+strip = true
 
-# Mobile Cross-Compilation Targets (V1.2 Prep)
+[patch.crates-io]
+# Any crates flagged by cargo audit would go here
+
 [package.metadata.mobile]
 targets = [
     "aarch64-apple-ios",

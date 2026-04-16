@@ -1,15 +1,40 @@
+# Build artifacts
 target/
-node_modules/
-.next/
-dist/
+sns-daemon/target/
+sns-program/target/
 patched_crates/
-.DS_Store
-*.log
-batches/
-*.backup
+
+# Dependencies
+node_modules/
+dashboard/.next/
+sdk/dist/
+
+# Environment
 .env
 .env.local
 .env.production
+*.env
+
+# Keys and secrets
 *.key
+*.pem
+*.secret
 keypair.json
+node_keypair.bin
+*_secret*
+test-keys*
+
+# OS
+.DS_Store
+*.log
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Build outputs
+batches/
 earnings_backup.json
+pod-logs/

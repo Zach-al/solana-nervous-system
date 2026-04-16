@@ -1,6 +1,6 @@
 use crate::config::Config;
 use crate::security::CircuitBreaker;
-use anyhow::Result;
+
 use axum::{
     extract::State,
     http::{HeaderMap, HeaderValue, StatusCode},
@@ -15,7 +15,6 @@ use serde::Serialize;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tower_http::cors::{Any, CorsLayer};
-use std::io::{self, Write};
 use tracing::{info, warn, error};
 use serde_json;
 use base64::{engine::general_purpose, Engine as _};
@@ -115,7 +114,7 @@ impl DailySalt {
 // ─────────────────────────────────────────────────────────────
 
 #[allow(clippy::too_many_arguments)]
-pub async fn start_rpc_proxy(
+pub fn create_rpc_router(
     config: Config, 
     node_id: String, 
     slot_cache: crate::SlotCache,
@@ -138,7 +137,7 @@ pub async fn start_rpc_proxy(
     node_multiaddrs: Arc<Mutex<Vec<String>>>,
     peer_guard: Arc<crate::peer_guard::PeerGuard>,
     telemetry: Arc<crate::telemetry::TelemetryCollector>,
-) -> Result<()> {
+) -> Router {
     let stats = Arc::new(Mutex::new(NodeStats {
         node_id: node_id.clone(),
         node_name: config.node_name.clone(),
@@ -182,7 +181,7 @@ pub async fn start_rpc_proxy(
         .allow_methods(Any)
         .allow_headers(Any);
 
-    let app = Router::new()
+    Router::new()
         .route("/", post(rpc_handler).get(root_get_handler))
         .route("/health", get(health_handler))
         .route("/stats", get(stats_handler))
@@ -205,21 +204,7 @@ pub async fn start_rpc_proxy(
                 .layer(tower::timeout::TimeoutLayer::new(std::time::Duration::from_secs(5))),
         )
         .layer(cors)
-        .with_state(state);
-
-    let addr = format!("0.0.0.0:{}", config.http_port);
-    println!("[SOLNET] Attempting to bind RPC Proxy to: {}", addr);
-    std::io::stdout().flush().ok();
-    
-    let listener = tokio::net::TcpListener::bind(&addr).await?;
-    
-    println!("[SOLNET] Successfully bound to: {}", addr);
-    std::io::stdout().flush().ok();
-    
-    info!("RPC proxy listening on http://{}", addr);
-
-    axum::serve(listener, app).await?;
-    Ok(())
+        .with_state(state)
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -248,17 +233,12 @@ pub fn security_headers() -> HeaderMap {
 // ─────────────────────────────────────────────────────────────
 
 pub fn extract_ip(headers: &HeaderMap) -> String {
-    // Railway-specific proxy trust
-    let _trusted_proxies = ["10.", "172.", "192.168."]; // Internal network
-    
-    let socket_ip = "unknown"; // In axum 0.7 we'd use ConnectInfo, but headers are more reliable on Railway
-    
     headers
         .get("x-forwarded-for")
         .and_then(|v| v.to_str().ok())
         .and_then(|s| s.split(',').next())
         .map(|s| s.trim().to_string())
-        .unwrap_or_else(|| socket_ip.to_string())
+        .unwrap_or_else(|| "unknown".to_string())
 }
 
 pub fn sanitize_header_value(val: &str) -> String {
@@ -369,7 +349,7 @@ async fn rpc_handler(
             let client = reqwest::Client::new();
             match client.post(&mesh_node.endpoint).body(body.clone()).send().await {
                 Ok(resp) => {
-                    let mut r = (StatusCode::from_u16(resp.status().as_u16()).unwrap(), resp.bytes().await.unwrap()).into_response();
+                    let mut r = (StatusCode::from_u16(resp.status().as_u16()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR), resp.bytes().await.unwrap_or_default()).into_response();
                     r.headers_mut().extend(sec_headers);
                     return r;
                 }
@@ -436,19 +416,22 @@ async fn rpc_handler(
                         tracker.record_request().await;
                     }
 
-                    let mut response_json: serde_json::Value = serde_json::from_slice(&response_bytes).unwrap();
-                    
-                    // Cache the upstream response
-                    state.latency_engine.set_cache(method, params, response_json.clone());
+                    match serde_json::from_slice::<serde_json::Value>(&response_bytes) {
+                        Ok(mut response_json) => {
+                            // Cache the upstream response
+                            state.latency_engine.set_cache(method, params, response_json.clone());
 
-                    let (_, proof) = crate::verifier::MerkleVerifier::generate_proof(&response_json);
-                    if let Some(obj) = response_json.as_object_mut() {
-                        obj.insert("solnet_proof".to_string(), serde_json::to_value(proof).unwrap());
+                            let (_, proof) = crate::verifier::MerkleVerifier::generate_proof(&response_json);
+                            if let Some(obj) = response_json.as_object_mut() {
+                                obj.insert("solnet_proof".to_string(), serde_json::to_value(proof).unwrap());
+                            }
+
+                            let mut r = (StatusCode::OK, Json(response_json)).into_response();
+                            r.headers_mut().extend(sec_headers);
+                            r
+                        }
+                        Err(_) => StatusCode::BAD_GATEWAY.into_response()
                     }
-
-                    let mut r = (StatusCode::OK, Json(response_json)).into_response();
-                    r.headers_mut().extend(sec_headers);
-                    r
                 }
                 Err(_) => StatusCode::BAD_GATEWAY.into_response()
             }
@@ -499,11 +482,11 @@ async fn onion_handler(
         let mut headers = HeaderMap::new();
         headers.insert("x-forwarded-for", HeaderValue::from_static("anon-routed"));
         
-        return rpc_handler(
+        rpc_handler(
             State(state),
             headers,
             axum::body::Bytes::from(peeled.inner_payload),
-        ).await.into_response();
+        ).await.into_response()
     } else {
         info!("Peeling RELAY layer — forwarding to {}", peeled.next_hop);
         
@@ -529,11 +512,11 @@ async fn onion_handler(
                         let body = resp.bytes().await.unwrap_or_default();
                         let mut r = (status_code, body).into_response();
                         r.headers_mut().extend(sec_headers);
-                        return r;
+                        r
                     }
                     Err(e) => {
                         error!("Onion forward failed: {}", e);
-                        return (StatusCode::BAD_GATEWAY, Json(serde_json::json!({"error":format!("forward failed: {}", e)}))).into_response();
+                        (StatusCode::BAD_GATEWAY, Json(serde_json::json!({"error":format!("forward failed: {}", e)}))).into_response()
                     }
                 }
             },
@@ -542,11 +525,11 @@ async fn onion_handler(
                 // Fallback to exit node behavior
                 let mut headers = HeaderMap::new();
                 headers.insert("x-forwarded-for", HeaderValue::from_static("anon-routed"));
-                return rpc_handler(
+                rpc_handler(
                     State(state),
                     headers,
                     axum::body::Bytes::from(peeled.inner_payload),
-                ).await.into_response();
+                ).await.into_response()
             }
         }
     }
@@ -655,22 +638,25 @@ async fn settle_handler(State(state): State<SharedState>) -> impl IntoResponse {
 // Health endpoint
 // ─────────────────────────────────────────────────────────────
 
-async fn health_handler(State(state): State<SharedState>) -> impl IntoResponse {
-    let stats = state.stats.lock().await;
-    let uptime = (Utc::now() - stats.started_at).num_seconds() as u64;
-    let battery = state.battery_guard.get_status();
-
-    let mut r = Json(serde_json::json!({
-        "status": "ok",
-        "node_id": stats.node_id,
-        "requests_served": stats.requests_served,
-        "earnings_lamports": stats.earnings_lamports,
-        "uptime_seconds": uptime,
-        "battery": battery,
-    }))
-    .into_response();
-    r.headers_mut().extend(security_headers());
-    r
+async fn health_handler(
+    State(state): State<SharedState>,
+) -> impl IntoResponse {
+    let uptime = (Utc::now() - state.stats.lock().await.started_at).num_seconds() as u64;
+    
+    // Always return 200 with valid JSON
+    // Never return 500 from health endpoint
+    // Even if Solana RPC is down, the node is healthy
+    (
+        axum::http::StatusCode::OK,
+        axum::Json(serde_json::json!({
+            "status": "ok",
+            "version": env!("CARGO_PKG_VERSION"),
+            "node_id": state.stats.lock().await.node_id,
+            "uptime_seconds": uptime,
+            "requests_served": state.stats.lock().await.requests_served,
+            "earnings_lamports": state.stats.lock().await.earnings_lamports,
+        }))
+    )
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -798,16 +784,11 @@ async fn telemetry_aggregate_handler(
     // "217 nodes flex endpoint"
     // Mock response simulating across the 217 downloaded SDks
     let mut r = Json(serde_json::json!({
-      "reporting_nodes": 217,
-      "total_requests_network": 847293,
-      "avg_hole_punch_rate": 87.3,
-      "network_uptime_avg_hours": 4.2,
-      "version_distribution": {
-        "2.1.1": 84,
-        "2.1.0": 133
-      }
+        "total_nodes": 217,
+        "active_nodes": 184,
+        "avg_uptime": 86400,
+        "total_requests": 1500000,
     })).into_response();
     r.headers_mut().extend(security_headers());
     r
 }
-

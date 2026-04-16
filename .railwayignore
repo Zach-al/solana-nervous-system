@@ -1,13 +1,12 @@
-node_modules
-.git
-.next
-.vscode
-dist
-build
-target
-out
-.env
-*.log
-.anchor
-sns-program
-dashboard
+# Only build the daemon — ignore everything else
+sns-program/
+dashboard/
+sdk/
+docs/
+scripts/
+patched_crates/
+*.md
+Makefile
+.github/
+.vercel/
+rust-toolchain.toml
