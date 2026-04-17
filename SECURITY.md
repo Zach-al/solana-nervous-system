@@ -4,9 +4,8 @@
 
 | Version | Supported |
 |---------|-----------|
-| 2.1.x | ✅ Active |
-| 1.2.x | ✅ Active |
-| < 1.2 | ❌ EOL |
+| 2.1.x   | ✅ Yes    |
+| < 2.0   | ❌ No     |
 
 ## CVE Patch Status
 
@@ -58,7 +57,7 @@
 Found a vulnerability in SOLNET?
 
 1. Do NOT open a public GitHub issue
-2. Email: security@solnet.dev (or DM @Zach-al)
+2. Email: askzachn@gmail.com
 3. Include: description, reproduction steps, impact
 4. We respond within 48 hours
 5. Credit given in CHANGELOG for valid reports

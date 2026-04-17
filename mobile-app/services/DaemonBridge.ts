@@ -2,11 +2,14 @@
  * DaemonBridge.ts
  *
  * TypeScript bridge to the SolnetDaemon native module.
- * On iOS this calls Rust FFI via Swift.
- * On Android this calls Rust FFI via Kotlin/JNI.
+ * On iOS this calls Rust FFI via Swift (Keychain-authenticated).
+ * On Android this calls Rust FFI via Kotlin/JNI (Keystore-authenticated).
  *
- * When the native module is unavailable (Expo Go, web), all methods
- * fall back gracefully so the app stays functional without a binary.
+ * SECURITY:
+ *   - In production builds, the native module MUST be present.
+ *     A missing module in production = build configuration error → hard throw.
+ *   - In development (Expo Go), runs in stub mode with explicit warnings.
+ *   - Stub stats include `isStub: true` so the UI can show a "DEMO MODE" banner.
  */
 
 import { NativeModules, NativeEventEmitter, Platform, EmitterSubscription } from 'react-native';
@@ -20,6 +23,8 @@ export interface DaemonStats {
   connections: number;
   uptime_secs: number;
   throttle_state: ThrottleState;
+  /** True when the native module is absent and stats are simulated. */
+  isStub: boolean;
 }
 
 // ─── Native Module Interface ─────────────────────────────────────────────────
@@ -28,7 +33,7 @@ interface SolnetDaemonNative {
   setThrottleState(state: ThrottleState): Promise<void>;
   startDaemon(): Promise<void>;
   stopDaemon(): Promise<void>;
-  getDaemonStats(): Promise<DaemonStats>;
+  getDaemonStats(): Promise<Omit<DaemonStats, 'isStub'>>;
 }
 
 // ─── Module Resolution ───────────────────────────────────────────────────────
@@ -37,19 +42,34 @@ const { SolnetDaemon: _NativeModule } = NativeModules as {
   SolnetDaemon: SolnetDaemonNative | undefined;
 };
 
-const isAvailable = !!_NativeModule;
+const IS_STUB = !_NativeModule;
 
-if (!isAvailable) {
+// ─── Environment guards ─────────────────────────────────────────────────────
+
+if (IS_STUB && __DEV__) {
   console.warn(
-    '[DaemonBridge] SolnetDaemon native module not found. ' +
-    'Running in stub mode (Expo Go / simulator). ' +
-    'Build with `expo run:ios` or `expo run:android` for full functionality.'
+    '[DaemonBridge] ⚠️  Running in STUB mode. ' +
+    'Native daemon is NOT active. ' +
+    'Governor controls are simulated. ' +
+    'Build a dev client with: npx expo run:ios / npx expo run:android'
+  );
+}
+
+if (IS_STUB && !__DEV__) {
+  // Production build without native module = fatal build configuration error.
+  // This should never happen if the app was built correctly with
+  // `expo run:ios` or `expo run:android` (not bare Expo Go).
+  throw new Error(
+    'DaemonBridge: Native module "SolnetDaemon" missing in production build. ' +
+    'This is a build configuration error. The Rust daemon library ' +
+    '(libsns_daemon.dylib / libsns_daemon.so) must be linked into the ' +
+    'native project before publishing.'
   );
 }
 
 // ─── Event Emitter ───────────────────────────────────────────────────────────
 
-const emitter = isAvailable
+const emitter = !IS_STUB
   ? new NativeEventEmitter(_NativeModule as any)
   : null;
 
@@ -57,50 +77,55 @@ const emitter = isAvailable
 
 export const DaemonBridge = {
   /** Whether the native Rust daemon module is present in this build. */
-  isAvailable,
+  isAvailable: !IS_STUB,
+
+  /** True when running without the native module (Expo Go / dev). */
+  isStub: IS_STUB,
 
   /**
    * Tell the Rust daemon which power mode to operate in.
-   * FULL_POWER → 50 concurrent connections, 10s heartbeat
-   * CONSERVE   → 10 concurrent connections, 60s heartbeat
-   * STANDBY    → 2 concurrent connections, 300s heartbeat
+   * In authenticated mode (iOS/Android), this uses a session token.
+   * In stub mode, this is a no-op.
    */
   async setThrottleState(state: ThrottleState): Promise<void> {
-    if (!_NativeModule) return;
-    return _NativeModule.setThrottleState(state);
+    if (IS_STUB) return;
+    return _NativeModule!.setThrottleState(state);
   },
 
   /** Start the Rust daemon in a background thread. */
   async start(): Promise<void> {
-    if (!_NativeModule) return;
-    return _NativeModule.startDaemon();
+    if (IS_STUB) return;
+    return _NativeModule!.startDaemon();
   },
 
   /** Gracefully stop the Rust daemon. */
   async stop(): Promise<void> {
-    if (!_NativeModule) return;
-    return _NativeModule.stopDaemon();
+    if (IS_STUB) return;
+    return _NativeModule!.stopDaemon();
   },
 
   /**
    * Fetch runtime stats from the Rust daemon.
-   * Returns zeroed stats when the module is unavailable.
+   * Returns stub stats with `isStub: true` when the module is unavailable.
+   * Callers should check `isStub` and show a "DEMO MODE" indicator.
    */
   async getStats(): Promise<DaemonStats> {
-    if (!_NativeModule) {
+    if (IS_STUB) {
       return {
         requests_served: 0,
         connections: 0,
         uptime_secs: 0,
         throttle_state: 'STANDBY',
+        isStub: true,
       };
     }
-    return _NativeModule.getDaemonStats();
+    const raw = await _NativeModule!.getDaemonStats();
+    return { ...raw, isStub: false };
   },
 
   /**
    * Subscribe to throttle state change events emitted by Rust.
-   * Returns a subscription object; call `.remove()` to unsubscribe.
+   * Returns null in stub mode.
    */
   onThrottleStateChange(
     callback: (newState: ThrottleState) => void
@@ -111,6 +136,7 @@ export const DaemonBridge = {
 
   /**
    * Subscribe to raw daemon log events emitted by Rust.
+   * Returns null in stub mode.
    */
   onLogLine(
     callback: (line: string) => void

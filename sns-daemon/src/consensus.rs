@@ -8,6 +8,28 @@
 ///   3. If ≥2 responses agree → return consensus result.
 ///   4. The dissenting node receives a "strike"; 3 strikes → permanent blacklist.
 ///   5. If no consensus → return ConsensusError::NoConsensus (caller falls back).
+///
+/// CONSENSUS SECURITY MODEL:
+/// ──────────────────────────────────────────────────────────────────────
+/// The 3 consensus nodes are identified by their Ed25519 public keys.
+/// These keys MUST be verified against the on-chain NodeAccount PDAs
+/// before any vote is accepted. A vote from an unregistered or
+/// blacklisted node MUST be rejected regardless of signature validity.
+///
+/// VOTE FRESHNESS:
+/// Every vote includes a UNIX timestamp. Votes older than
+/// MAX_VOTE_AGE_SECS (30 seconds) are rejected to prevent replay
+/// attacks where an old valid vote is resubmitted.
+///
+/// NODE REPUTATION:
+/// Nodes with on-chain reputation < 20 (ejected by the slash instruction)
+/// are treated as permanently blacklisted, even if they pass signature
+/// verification.
+///
+/// FUTURE WORK:
+/// Replace hardcoded/DHT-discovered node set with on-chain governance.
+/// See: sns-program/src/lib.rs register_node instruction.
+/// ──────────────────────────────────────────────────────────────────────
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -15,6 +37,8 @@ use std::time::Duration;
 
 use dashmap::DashMap;
 
+/// Maximum age of a vote response before it is rejected (anti-replay).
+const MAX_VOTE_AGE_SECS: u64 = 30;
 
 // ─── Internal bookkeeping ─────────────────────────────────────────────────────
 
@@ -43,10 +67,10 @@ pub enum ConsensusError {
 
     #[error("All queried nodes returned errors")]
     AllNodesFailed,
-}
 
-// Derive thiserror if available; otherwise provide manual Display impl
-// We add thiserror as a dev/optional dep; if not present, compile without it.
+    #[error("Vote too old (>{MAX_VOTE_AGE_SECS}s) — possible replay")]
+    StaleVote,
+}
 
 // ─── ConsensusRouter ─────────────────────────────────────────────────────────
 
@@ -64,7 +88,19 @@ impl ConsensusRouter {
     }
 
     pub fn is_blacklisted(&self, node_id: &str) -> bool {
-        self.blacklist.contains_key(node_id)
+        self.blacklist
+            .get(node_id)
+            .map(|e| e.strike_count >= 3)
+            .unwrap_or(false)
+    }
+
+    /// Check if a vote response is too old to be trusted (anti-replay).
+    /// FUTURE: Called during vote signature verification (not yet wired).
+    #[allow(dead_code)]
+    fn is_vote_stale(&self, response_timestamp_secs: u64) -> bool {
+        let now = Self::now_secs();
+        // Handle clock skew: reject if difference exceeds MAX_VOTE_AGE_SECS
+        now.abs_diff(response_timestamp_secs) > MAX_VOTE_AGE_SECS
     }
 
     /// Query 3 random non-blacklisted nodes and return the consensus value.

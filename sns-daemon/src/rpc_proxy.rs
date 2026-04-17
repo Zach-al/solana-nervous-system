@@ -184,6 +184,7 @@ pub fn create_rpc_router(
     Router::new()
         .route("/", post(rpc_handler).get(root_get_handler))
         .route("/stats", get(stats_handler))
+        .route("/status", get(status_handler))
         .route("/mesh/status", get(mesh_status_handler))
         .route("/security/stats", get(security_stats_handler))
         .route("/telemetry/aggregate", get(telemetry_aggregate_handler))
@@ -632,13 +633,13 @@ async fn settle_handler(State(state): State<SharedState>) -> impl IntoResponse {
 }
 
 // ─────────────────────────────────────────────────────────────
-// Health endpoint
+// Health endpoint — PUBLIC, UNAUTHENTICATED, MINIMAL
 // ─────────────────────────────────────────────────────────────
 
 async fn health_handler() -> impl IntoResponse {
-    tracing::info!("[HEALTH] Check hit from remote edge (Lock-Free)");
-    
-    // Lock-free static response for maximum reliability
+    // Lock-free static response for maximum reliability.
+    // Returns ONLY status/version/mode — no node_id, no earnings,
+    // no uptime, no wallet info.
     (
         axum::http::StatusCode::OK,
         axum::Json(serde_json::json!({
@@ -650,7 +651,68 @@ async fn health_handler() -> impl IntoResponse {
 }
 
 // ─────────────────────────────────────────────────────────────
-// Stats endpoint
+// Status endpoint — AUTHENTICATED (Bearer DASHBOARD_TOKEN)
+// Full stats for the dashboard. Not publicly accessible.
+// ─────────────────────────────────────────────────────────────
+
+async fn status_handler(
+    State(state): State<SharedState>,
+    headers: HeaderMap,
+) -> impl IntoResponse {
+    // Validate bearer token
+    let expected_token = std::env::var("DASHBOARD_TOKEN").unwrap_or_default();
+    if expected_token.is_empty() {
+        return (StatusCode::SERVICE_UNAVAILABLE, Json(serde_json::json!({
+            "error": "DASHBOARD_TOKEN not configured"
+        }))).into_response();
+    }
+
+    let provided_token = headers
+        .get("authorization")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.strip_prefix("Bearer "))
+        .unwrap_or("");
+
+    // Constant-time comparison to prevent timing attacks
+    let expected_bytes = expected_token.as_bytes();
+    let provided_bytes = provided_token.as_bytes();
+    let matches = expected_bytes.len() == provided_bytes.len() && {
+        let mut diff: u8 = 0;
+        for (a, b) in expected_bytes.iter().zip(provided_bytes.iter()) {
+            diff |= a ^ b;
+        }
+        diff == 0
+    };
+
+    if !matches {
+        return (StatusCode::UNAUTHORIZED, Json(serde_json::json!({
+            "error": "Invalid or missing bearer token"
+        }))).into_response();
+    }
+
+    let stats = state.stats.lock().await;
+    let uptime = (Utc::now() - stats.started_at).num_seconds() as u64;
+    let battery = state.battery_guard.get_status();
+
+    let mut r = Json(serde_json::json!({
+        "node_id": stats.node_id,
+        "node_name": stats.node_name,
+        "requests_served": stats.requests_served,
+        "earnings_lamports": stats.earnings_lamports,
+        "earnings_sol": stats.earnings_lamports as f64 / 1_000_000_000.0,
+        "uptime_seconds": uptime,
+        "started_at": stats.started_at,
+        "peer_count": stats.peer_count,
+        "status": "online",
+        "battery": battery,
+    }))
+    .into_response();
+    r.headers_mut().extend(security_headers());
+    r
+}
+
+// ─────────────────────────────────────────────────────────────
+// Stats endpoint (legacy — will be deprecated in favour of /status)
 // ─────────────────────────────────────────────────────────────
 
 async fn stats_handler(State(state): State<SharedState>) -> impl IntoResponse {

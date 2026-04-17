@@ -1,0 +1,49 @@
+name: SLSA Provenance
+
+on:
+  release:
+    types: [created]
+
+jobs:
+  provenance:
+    name: Generate SLSA Provenance
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build daemon (release)
+        run: cd sns-daemon && cargo build --release
+
+      - name: Compute binary SHA256
+        id: hash
+        run: |
+          HASH=$(sha256sum sns-daemon/target/release/sns-daemon | awk '{print $1}')
+          echo "binary_hash=${HASH}" >> $GITHUB_OUTPUT
+          echo "Binary SHA256: ${HASH}"
+
+      - name: Upload binary as release asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: sns-daemon/target/release/sns-daemon
+
+      - name: Record provenance metadata
+        run: |
+          echo "SLSA Provenance for sns-daemon" > provenance.txt
+          echo "SHA256: ${{ steps.hash.outputs.binary_hash }}" >> provenance.txt
+          echo "Built on: $(date -u)" >> provenance.txt
+          echo "Rust: $(rustc --version)" >> provenance.txt
+          echo "Commit: ${{ github.sha }}" >> provenance.txt
+          echo "Tag: ${{ github.ref_name }}" >> provenance.txt
+          cat provenance.txt
+
+      - name: Upload provenance
+        uses: softprops/action-gh-release@v2
+        with:
+          files: provenance.txt

@@ -46,3 +46,4 @@ pod-logs/
 /*.bin
 /sns-daemon-release
 /target-binary
+.vercel/

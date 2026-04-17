@@ -185,3 +185,18 @@ The hand-authored IDL (`target/idl/sns_program.json`) is kept in sync with `lib.
 - **Client SDK** — Drop-in replacement for `@solana/web3.js` `Connection` that auto-routes through SNS mesh
 - **Node operator dashboard** — Extend the Next.js dashboard with wallet connect + on-chain registration flow
 - **CLI tool** — `sns` CLI for node management: `sns start`, `sns register`, `sns withdraw`, `sns status`
+
+---
+
+## Environment Variables
+
+| Variable | Required | Description |
+|---|---|---|
+| `SOLANA_RPC_URL` | Yes | Upstream Solana RPC endpoint (e.g., `https://api.devnet.solana.com`) |
+| `NODE_WALLET_PUBKEY` | Yes | Solana wallet public key for earnings (never logged in full) |
+| `NODE_NAME` | No | Human-readable node identifier (default: auto-generated) |
+| `DASHBOARD_TOKEN` | Yes (prod) | Bearer token for `/status` endpoint. Generate with `openssl rand -hex 32`. **Do NOT commit.** |
+| `PORT` | No | HTTP port (Railway injects this; default: 9000) |
+| `LOG_LEVEL` | No | Tracing filter (default: `info`) |
+
+> **Security:** `DASHBOARD_TOKEN` must be set in Railway environment variables (or `.env`). The `/status` endpoint returns sensitive stats (earnings, node_id) and requires `Authorization: Bearer <token>`. The public `/health` endpoint returns only `{status, version, mode}`.

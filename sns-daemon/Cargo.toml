@@ -88,3 +88,10 @@ targets = [
     "aarch64-linux-android",
     "armv7-linux-androideabi"
 ]
+
+# Financial counters (earnings_lamports, pending_lamports) must NEVER
+# silently wrap. overflow-checks = true causes a panic (then abort)
+# instead of silent u64 corruption. Performance cost is negligible.
+[profile.release]
+overflow-checks = true
+panic = "abort"
