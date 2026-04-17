@@ -5,6 +5,11 @@ edition = "2021"
 authors = ["SOLNET Enterprise"]
 description = "Enterprise-grade decentralized RPC mesh daemon"
 
+[lib]
+name = "sns_daemon"
+path = "src/lib.rs"
+crate-type = ["cdylib", "rlib"]
+
 [[bin]]
 name = "sns-daemon"
 path = "src/main.rs"
@@ -31,6 +36,7 @@ tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
 uuid = { version = "1.5.0", features = ["v4", "serde"] }
 rand = "0.8.5"
+thiserror = "1.0"
 ed25519-dalek = "2.1.0"
 x25519-dalek = { version = "2.0.0", features = ["static_secrets"] }
 aes-gcm = "0.10.3"

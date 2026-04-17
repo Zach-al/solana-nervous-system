@@ -19,6 +19,8 @@ pub mod battery_guard;
 pub mod mobile_peer;
 pub mod peer_guard;
 pub mod telemetry;
+pub mod mobile_governor;
+pub mod consensus;
 
 use anyhow::Result;
 use chrono::Utc;

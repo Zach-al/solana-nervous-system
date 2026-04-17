@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { 
   StyleSheet, 
   View, 
@@ -15,6 +15,8 @@ import { useEarningsStore } from '../../stores/earningsStore';
 import { useWallet } from '../../hooks/useWallet';
 import { useRouter } from 'expo-router';
 import { Colors, Radius, Spacing, Typography } from '../../constants/antigravity';
+import { useDeviceGovernor } from '../../hooks/useDeviceGovernor';
+import { DaemonBridge } from '../../services/DaemonBridge';
 
 // Components
 import ReactorCore from '../../components/node/ReactorCore';
@@ -28,18 +30,33 @@ import MonoCounter from '../../components/ui/MonoCounter';
 import GlassCard from '../../components/ui/GlassCard';
 
 // Icons
-import { CircleUser, Pause } from 'lucide-react-native';
+import { CircleUser, Pause, Zap, WifiOff } from 'lucide-react-native';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
+const THROTTLE_COLORS: Record<string, string> = {
+  FULL_POWER: Colors.cyan,
+  CONSERVE: '#f5a623',
+  STANDBY: '#ff6b6b',
+};
 
 export default function DashboardScreen() {
   const router = useRouter();
   const { isActive, nodeId, requestsServed, uptimeSeconds, setActive } = useNodeStore();
   const { todayLamports, lifetimeLamports } = useEarningsStore();
   const { truncatedAddress } = useWallet();
-  
+  const deviceState = useDeviceGovernor();
+
   // Refresh query
   useNodeStatus();
+
+  // ── Sync throttle state to Rust daemon whenever device state changes ──
+  useEffect(() => {
+    if (!deviceState.isReady) return;
+    DaemonBridge.setThrottleState(deviceState.throttleState).catch((err) =>
+      console.warn('[DaemonBridge] setThrottleState failed:', err)
+    );
+  }, [deviceState.throttleState, deviceState.isReady]);
 
   const formatUptime = (seconds: number) => {
     const h = Math.floor(seconds / 3600);
@@ -80,7 +97,28 @@ export default function DashboardScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* ZONE 2: REACTOR CORE */}
+          {/* POWER MODE BADGE */}
+          {deviceState.isReady && (
+            <View style={[styles.powerBadge, { borderColor: THROTTLE_COLORS[deviceState.throttleState] }]}>
+              <Zap size={10} color={THROTTLE_COLORS[deviceState.throttleState]} />
+              <Text style={[styles.powerBadgeText, { color: THROTTLE_COLORS[deviceState.throttleState] }]}>
+                {deviceState.throttleState === 'FULL_POWER' ? 'FULL POWER' :
+                 deviceState.throttleState === 'CONSERVE' ? 'CONSERVING' : 'STANDBY'}{' '}
+                · {Math.round(deviceState.batteryLevel * 100)}%
+              </Text>
+            </View>
+          )}
+
+          {/* STANDBY WARNING */}
+          {deviceState.isReady && deviceState.throttleState === 'STANDBY' && (
+            <View style={styles.standbyWarning}>
+              <WifiOff size={14} color="#ff6b6b" />
+              <Text style={styles.standbyText}>
+                Heartbeat mode — connect to WiFi or plug in for full throughput
+              </Text>
+            </View>
+          )}
+
           <View style={styles.reactorContainer}>
             <ReactorCore 
               status={isActive ? 'active' : 'idle'} 
@@ -269,5 +307,40 @@ const styles = StyleSheet.create({
     ...Typography.mono,
     fontSize: 16,
     color: Colors.cyan,
-  }
+  },
+  powerBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    alignSelf: 'flex-start',
+    borderWidth: 1,
+    borderRadius: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    marginBottom: 10,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+  },
+  powerBadgeText: {
+    ...Typography.mono,
+    fontSize: 9,
+    letterSpacing: 1,
+  },
+  standbyWarning: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(255, 107, 107, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 107, 107, 0.4)',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginBottom: 12,
+  },
+  standbyText: {
+    ...Typography.mono,
+    fontSize: 11,
+    color: '#ff6b6b',
+    flex: 1,
+  },
 });
