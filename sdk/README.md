@@ -1,12 +1,11 @@
 # solnet-sdk
 
-> Enterprise grade Decentralized RPC routing for Solana. Eliminate downtime, reduce infrastructure costs, and guarantee censorship resistance with the SOLNET edge protocol.
+> High-availability decentralized RPC infrastructure for the Solana network. Optimizes request routing, minimizes latency through edge-caching, and provides resilient access to blockchain state via a community-owned mesh protocol.
 
 [![npm version](https://badge.fury.io/js/solnet-sdk.svg)](https://www.npmjs.com/package/solnet-sdk)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
-[![Built on Solana](https://img.shields.io/badge/Built%20on-Solana-purple)](https://solana.com)
 
-## Replace your Solana Connection in 30 seconds
+## Integration Guide
 
 ```bash
 npm install solnet-sdk

@@ -1,4 +1,5 @@
-import { SafeAreaView, View, Text, TouchableOpacity, ScrollView } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useWallet } from '../../hooks/useWallet';
 import { CONFIG } from '../../constants/theme';
 import { useRouter } from 'expo-router';
@@ -36,7 +37,7 @@ export default function SettingsScreen() {
         </View>
         <View className="flex-row justify-between">
           <Text className="text-white">Run on mobile data</Text>
-          <Text className="text-textTertiary font-bold">OFF</Text>
+          <Text className="text-primary font-bold">ON</Text>
         </View>
       </View>
 

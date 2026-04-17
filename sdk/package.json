@@ -1,7 +1,7 @@
 {
   "name": "solnet-sdk",
-  "version": "1.2.1",
-  "description": "Decentralized RPC for Solana. Drop-in replacement for @solana/web3.js Connection. One line change. 30% cheaper. Zero downtime.",
+  "version": "1.2.2",
+  "description": "High-availability decentralized RPC infrastructure for Solana. Resilient, verified, and community-owned edge routing protocol.",
   "main": "dist/index.js",
   "module": "dist/index.esm.js",
   "types": "dist/index.d.ts",

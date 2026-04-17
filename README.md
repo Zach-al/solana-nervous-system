@@ -12,7 +12,7 @@
 
 ---
 
-SOLNET is a production-grade Decentralized Physical Infrastructure Network (DePIN) that eliminates Solana's reliance on centralized RPC providers. It routes blockchain traffic through a community-owned, censorship-resistant P2P mesh — built with Rust, libp2p, and Anchor — where anyone can earn SOL by contributing compute from servers, desktops, or mobile devices.
+SOLNET is a high-availability Decentralized Physical Infrastructure Network (DePIN) designed to provide resilient RPC services for the Solana ecosystem. By utilizing a community-owned P2P mesh architecture—implemented with Rust, libp2p, and Anchor—SOLNET enables decentralized request routing, minimizing reliance on centralized infrastructure providers while allowing node operators to earn SOL rewards for contributing compute and bandwidth.
 
 ## Infrastructure
 

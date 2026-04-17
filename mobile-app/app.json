@@ -2,6 +2,7 @@
   "expo": {
     "name": "SOLNET",
     "slug": "solnet",
+    "main": "./index.js",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -51,6 +52,7 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "entryPoint": "./index.js"
   }
 }

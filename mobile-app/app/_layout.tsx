@@ -5,6 +5,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { registerBackgroundFetchAsync } from '../services/backgroundTask';
 import '../global.css';
 
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { StatusBar } from 'expo-status-bar';
+
 const queryClient = new QueryClient();
 
 export default function RootLayout() {
@@ -13,28 +17,41 @@ export default function RootLayout() {
   const [isReady, setIsReady] = useState(false);
 
   useEffect(() => {
-    const checkOnboarding = async () => {
-      const onboarded = await AsyncStorage.getItem('onboarding_complete');
-      const inOnboardingGroup = segments[0] === '(onboarding)';
-      
-      if (onboarded === 'true' && inOnboardingGroup) {
-        registerBackgroundFetchAsync().catch(console.error);
-        router.replace('/(tabs)');
-      } else if (onboarded !== 'true' && !inOnboardingGroup) {
-        router.replace('/(onboarding)/welcome');
-      } else if (onboarded === 'true') {
-        registerBackgroundFetchAsync().catch(console.error);
-      }
-      setIsReady(true);
-    };
-    checkOnboarding();
-  }, [segments]);
+    if (!isReady) {
+      const checkOnboarding = async () => {
+        try {
+          const onboarded = await AsyncStorage.getItem('onboarding_complete');
+          const isFinished = onboarded === 'true';
+          const inOnboardingGroup = segments[0] === '(onboarding)';
+          
+          if (isFinished && inOnboardingGroup) {
+            registerBackgroundFetchAsync().catch(console.error);
+            router.replace('/(tabs)');
+          } else if (!isFinished && !inOnboardingGroup) {
+            router.replace('/(onboarding)/welcome');
+          } else if (isFinished) {
+            registerBackgroundFetchAsync().catch(console.error);
+          }
+        } catch (e) {
+          console.error('Failed to check onboarding state', e);
+        } finally {
+          setIsReady(true);
+        }
+      };
+      checkOnboarding();
+    }
+  }, [segments, isReady]);
 
   if (!isReady) return null;
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <Stack screenOptions={{ headerShown: false }} />
-    </QueryClientProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaProvider>
+        <QueryClientProvider client={queryClient}>
+          <StatusBar style="light" />
+          <Stack screenOptions={{ headerShown: false }} />
+        </QueryClientProvider>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }
