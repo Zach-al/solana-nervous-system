@@ -3711,7 +3711,7 @@ dependencies = [
  "futures",
  "hex",
  "hmac",
- "icu_collections 1.5.0",
+ "icu_collections 2.2.0",
  "icu_locid",
  "icu_normalizer 1.5.0",
  "icu_properties 1.5.0",
