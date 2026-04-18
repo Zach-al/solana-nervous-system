@@ -20,11 +20,11 @@ jobs:
         run: cargo install cargo-audit --locked
 
       - name: Run cargo audit
-        run: cargo audit
+        run: cargo audit --verbose
         # Fails the build if any dependency has a known CVE
 
       - name: Cargo check (verify build)
-        run: cargo check --release
+        run: cargo check --release --verbose
 
   npm-audit:
     name: NPM Audit (SDK + Dashboard)
