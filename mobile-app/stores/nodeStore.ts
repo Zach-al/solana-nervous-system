@@ -13,6 +13,7 @@ interface NodeState {
   setActive: (active: boolean) => void;
   setNodeId: (id: string) => void;
   updateFromHealth: (data: HealthResponse) => void;
+  updateFromLocalStats: (stats: { requests_served: number; uptime_seconds: number }) => void;
   setOffline: () => void;
 }
 
@@ -31,6 +32,11 @@ export const useNodeStore = create<NodeState>()(
         requestsServed: data.requests_served || get().requestsServed,
         uptimeSeconds: data.uptime_seconds || get().uptimeSeconds,
         lastPing: new Date().toISOString(),
+        isOnline: true,
+      }),
+      updateFromLocalStats: (stats) => set({
+        requestsServed: stats.requests_served,
+        uptimeSeconds: stats.uptime_seconds,
         isOnline: true,
       }),
       setOffline: () => set({ isOnline: false }),

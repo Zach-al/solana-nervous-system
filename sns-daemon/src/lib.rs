@@ -1,22 +1,12 @@
 /// lib.rs
 ///
-/// C FFI boundary for the SOLNET Rust daemon.
-/// Compiles to a cdylib (Dynamic library):
-///   - iOS:     libsns_daemon.dylib / .a
-///   - Android: libsns_daemon.so
+/// Enterprise consolidated FFI boundary for the SOLNET native core.
+/// Compiles to libsolnet_native (.so / .a).
 ///
-/// Swift consumers: import via SOLNET-Bridging-Header.h → solnet_ffi.h
-/// Kotlin consumers: JNI System.loadLibrary("sns_daemon")
-///
-/// SECURITY CONTRACT:
-///   - All exported functions are `extern "C"` with #[no_mangle].
-///   - Callers MUST call rust_init_governor() with a 32-byte session
-///     token before using rust_set_throttle_state_authenticated().
-///   - rust_get_daemon_stats() returns a heap-allocated C string;
-///     the caller MUST free it with rust_free_string().
-///   - rust_free_string() is safe to call with NULL.
-///   - Double-free is undefined behaviour — caller must NULL the
-///     pointer after calling rust_free_string().
+/// SECURITY MODEL:
+/// - Hardware-backed session authentication (Keystore/Keychain).
+/// - Constant-time token comparison for all protected operations.
+/// - Memory safety: Caller MUST call solnet_free_string() for all *mut c_char returns.
 
 pub mod mobile_governor;
 pub mod relay_client;
@@ -25,10 +15,13 @@ use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::OnceLock;
+use ed25519_dalek::{SigningKey, VerifyingKey, Signer};
+use rand::rngs::OsRng;
+use rand::RngCore;
 
 use mobile_governor::{MobileGovernor, ThrottleState};
 
-// ── Global singletons ─────────────────────────────────────────────────────────
+// ── Globals ──────────────────────────────────────────────────────────────────
 
 static GOVERNOR: OnceLock<MobileGovernor> = OnceLock::new();
 static GOVERNOR_TOKEN: OnceLock<[u8; 32]> = OnceLock::new();
@@ -38,28 +31,107 @@ fn governor() -> &'static MobileGovernor {
     GOVERNOR.get_or_init(MobileGovernor::new)
 }
 
-static RUNTIME: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
+// ── Helper: Authentication ────────────────────────────────────────────────────
 
-fn runtime() -> &'static tokio::runtime::Runtime {
-    RUNTIME.get_or_init(|| {
-        tokio::runtime::Builder::new_multi_thread()
-            .worker_threads(2)
-            .enable_all()
-            .build()
-            .expect("Failed to build Tokio runtime for FFI daemon")
-    })
+fn check_auth(token: *const u8, len: usize) -> bool {
+    if token.is_null() || len != 32 {
+        return false;
+    }
+    let provided = unsafe { std::slice::from_raw_parts(token, len) };
+    let expected = match GOVERNOR_TOKEN.get() {
+        Some(t) => t,
+        None => return false,
+    };
+
+    let mut diff: u8 = 0;
+    for (a, b) in provided.iter().zip(expected.iter()) {
+        diff |= a ^ b;
+    }
+    diff == 0
 }
 
-// ── FFI: Governor authentication ──────────────────────────────────────────────
+// ── FFI: Crypto Primitives ────────────────────────────────────────────────────
 
-/// Initialise the governor with a 32-byte session token.
-/// Must be called once before any authenticated throttle calls.
-/// Returns true on success, false if token is invalid or already set.
-///
-/// # Safety
-/// `token` must point to `len` valid bytes. `len` must be exactly 32.
+/// Generate Ed25519 keypair. Returns JSON string: {"publicKey": "...", "secretKey": "..."}
+/// Requires session token authentication.
 #[no_mangle]
-pub extern "C" fn rust_init_governor(token: *const u8, len: usize) -> bool {
+pub extern "C" fn solnet_generate_keypair(token: *const u8, token_len: usize) -> *mut c_char {
+    if !check_auth(token, token_len) {
+        return std::ptr::null_mut();
+    }
+
+    let mut seed = [0u8; 32];
+    OsRng.fill_bytes(&mut seed);
+    let signing_key = SigningKey::from_bytes(&seed);
+    let verifying_key: VerifyingKey = signing_key.verifying_key();
+    
+    let keypair = serde_json::json!({
+        "publicKey": hex::encode(verifying_key.as_bytes()),
+        "secretKey": hex::encode(signing_key.to_bytes()),
+    });
+    
+    CString::new(keypair.to_string())
+        .unwrap_or_else(|_| CString::new("error").unwrap())
+        .into_raw()
+}
+
+/// Sign message using Ed25519. Returns hex signature string.
+/// Requires session token authentication.
+#[no_mangle]
+pub extern "C" fn solnet_sign_transaction(
+    secret_key_hex: *const c_char,
+    message: *const c_char,
+    token: *const u8,
+    token_len: usize,
+) -> *mut c_char {
+    if !check_auth(token, token_len) || secret_key_hex.is_null() || message.is_null() {
+        return std::ptr::null_mut();
+    }
+
+    unsafe {
+        let secret_str = match CStr::from_ptr(secret_key_hex).to_str() {
+            Ok(s) => s,
+            Err(_) => return std::ptr::null_mut(),
+        };
+        let msg = match CStr::from_ptr(message).to_str() {
+            Ok(s) => s.as_bytes(),
+            Err(_) => return std::ptr::null_mut(),
+        };
+        
+        let secret_bytes = match hex::decode(secret_str) {
+            Ok(b) => b,
+            Err(_) => return std::ptr::null_mut(),
+        };
+
+        let secret_arr: [u8; 32] = match secret_bytes.try_into() {
+            Ok(a) => a,
+            Err(_) => return std::ptr::null_mut(),
+        };
+
+        let signing_key = SigningKey::from_bytes(&secret_arr);
+        let signature = signing_key.sign(msg);
+        
+        CString::new(hex::encode(signature.to_bytes()))
+            .unwrap_or_else(|_| CString::new("error").unwrap())
+            .into_raw()
+    }
+}
+
+/// Get random bytes from OsRng. Returns hex string.
+#[no_mangle]
+pub extern "C" fn solnet_get_random_bytes(length: usize) -> *mut c_char {
+    let mut bytes = vec![0u8; length];
+    OsRng.fill_bytes(&mut bytes);
+    
+    CString::new(hex::encode(bytes))
+        .unwrap_or_else(|_| CString::new("error").unwrap())
+        .into_raw()
+}
+
+// ── FFI: Lifecycle & Governor ────────────────────────────────────────────────
+
+#[no_mangle]
+pub extern "C" fn solnet_init_governor(token: *const u8, len: usize) -> bool {
     if token.is_null() || len != 32 {
         return false;
     }
@@ -69,102 +141,27 @@ pub extern "C" fn rust_init_governor(token: *const u8, len: usize) -> bool {
     GOVERNOR_TOKEN.set(arr).is_ok()
 }
 
-/// Set throttle state with token authentication.
-/// Returns true if the token matches and state was updated.
-///
-/// Constant-time comparison prevents timing side-channels.
-///
-/// # Safety
-/// `token` must point to `token_len` valid bytes.
 #[no_mangle]
-pub extern "C" fn rust_set_throttle_state_authenticated(
-    state: u8,
-    token: *const u8,
-    token_len: usize,
-) -> bool {
-    if token.is_null() || token_len != 32 {
+pub extern "C" fn solnet_set_throttle_state(state: u8, token: *const u8, token_len: usize) -> bool {
+    if !check_auth(token, token_len) {
         return false;
     }
-    let provided = unsafe { std::slice::from_raw_parts(token, token_len) };
-    let expected = match GOVERNOR_TOKEN.get() {
-        Some(t) => t,
-        None => return false,
-    };
-
-    // Constant-time comparison — prevent timing attacks
-    let mut diff: u8 = 0;
-    for (a, b) in provided.iter().zip(expected.iter()) {
-        diff |= a ^ b;
-    }
-    if diff != 0 {
-        return false;
-    }
-
     let clamped = state.min(2);
     GOVERNOR_STATE.store(clamped, Ordering::SeqCst);
     governor().set_state(ThrottleState::from_u8(clamped));
-    // Sync to the global state readable by relay_client
     mobile_governor::update_global_state(clamped);
+    push_log_to_java(&format!("Throttle state manually updated to: {:?}", clamped));
     true
 }
 
-/// DEPRECATED: Unauthenticated throttle state setter.
-/// Logs a warning. Use rust_set_throttle_state_authenticated() instead.
-///
-/// # Safety
-/// `state_ptr` must be a valid null-terminated UTF-8 C string, or NULL.
 #[no_mangle]
-pub extern "C" fn rust_set_throttle_state(state_ptr: *const c_char) {
-    if state_ptr.is_null() {
-        return;
-    }
-    tracing::warn!(
-        "[FFI] rust_set_throttle_state called without authentication. \
-         Migrate to rust_set_throttle_state_authenticated()."
-    );
-    let state_str = unsafe {
-        CStr::from_ptr(state_ptr)
-            .to_str()
-            .unwrap_or("STANDBY")
-    };
-    let ts = ThrottleState::from_str(state_str);
-    governor().set_state(ts);
-    mobile_governor::update_global_state(ts as u8);
+pub extern "C" fn solnet_get_throttle_state() -> u8 {
+    GOVERNOR_STATE.load(Ordering::SeqCst)
 }
 
-// ── FFI: Daemon lifecycle (legacy — kept for backward compatibility) ──────────
-
-/// Start the SOLNET daemon in a background Tokio thread.
-/// Idempotent — safe to call multiple times.
 #[no_mangle]
-pub extern "C" fn rust_start_daemon() {
-    runtime().spawn(async move {
-        tracing::info!("[FFI] rust_start_daemon called — daemon runtime active");
-    });
-}
-
-/// Gracefully stop the daemon.
-#[no_mangle]
-pub extern "C" fn rust_stop_daemon() {
-    tracing::info!("[FFI] rust_stop_daemon called");
-}
-
-// ── FFI: Relay client lifecycle ───────────────────────────────────────────────
-
-/// Start the mobile relay client with JSON configuration.
-///
-/// config_json: UTF-8 JSON, null-terminated. Required fields:
-///   { "relay_url": "https://...", "wallet_pubkey": "base58..." }
-/// Optional: "node_name", "max_concurrent" (1-8), "lamports_per_request"
-///
-/// relay_url MUST be HTTPS — returns false otherwise.
-/// Thread safe. Idempotent — safe to call multiple times.
-///
-/// # Safety
-/// `config_json` must be a valid null-terminated UTF-8 C string, or NULL.
-#[no_mangle]
-pub extern "C" fn rust_start_relay(config_json: *const c_char) -> bool {
-    if config_json.is_null() {
+pub extern "C" fn solnet_start_relay(config_json: *const c_char, token: *const u8, token_len: usize) -> bool {
+    if !check_auth(token, token_len) || config_json.is_null() {
         return false;
     }
     let json = unsafe {
@@ -174,170 +171,207 @@ pub extern "C" fn rust_start_relay(config_json: *const c_char) -> bool {
         }
     };
     match relay_client::RelayConfig::from_json(&json) {
-        Ok(config) => relay_client::start(config).is_ok(),
-        Err(e) => {
-            // Log the config error without logging config values
-            // (may contain wallet pubkey)
-            tracing::warn!("[FFI] rust_start_relay: config error: {}", e);
+        Ok(config) => {
+            push_log_to_java("Initializing Enterprise Relay Client...");
+            let res = relay_client::start(config).is_ok();
+            if res { push_log_to_java("✅ Relay Client ACTIVE"); }
+            res
+        },
+        Err(_) => {
+            push_log_to_java("❌ FAILED to initialize Relay: Invalid Config JSON");
             false
-        }
+        },
     }
 }
 
-/// Stop the mobile relay. Drains in-flight requests (up to 500ms).
-/// Thread safe. Idempotent.
 #[no_mangle]
-pub extern "C" fn rust_stop_relay() -> bool {
+pub extern "C" fn solnet_stop_relay(token: *const u8, token_len: usize) -> bool {
+    if !check_auth(token, token_len) {
+        return false;
+    }
+    push_log_to_java("Stopping Relay Client...");
     relay_client::stop()
 }
 
-// ── FFI: Stats + memory management ────────────────────────────────────────────
-
-/// Return current daemon/relay statistics as a heap-allocated JSON C string.
-///
-/// CALLER MUST free the returned pointer with `rust_free_string()`.
-/// Returns NULL on allocation failure.
-/// DO NOT use the pointer after calling rust_free_string().
 #[no_mangle]
-pub extern "C" fn rust_get_daemon_stats() -> *mut c_char {
+pub extern "C" fn solnet_get_daemon_stats() -> *mut c_char {
     let json = relay_client::get_stats_json();
-    match CString::new(json) {
-        Ok(s) => s.into_raw(),
-        Err(_) => std::ptr::null_mut(),
-    }
+    CString::new(json)
+        .map(|s| s.into_raw())
+        .unwrap_or(std::ptr::null_mut())
 }
 
-/// Free a C string previously returned by a Rust FFI function.
-///
-/// SAFETY CONTRACT:
-///   - `ptr` MUST have been returned by `rust_get_daemon_stats()`.
-///   - `ptr` MUST NOT have been freed before (double-free = UB).
-///   - `ptr` MUST NOT be used after this call.
-///   - NULL is safe (no-op).
-///   - Caller should set their pointer to NULL after calling this.
 #[no_mangle]
-pub extern "C" fn rust_free_string(ptr: *mut c_char) {
-    if ptr.is_null() {
-        return; // gracefully handle null — never panic across FFI
+pub extern "C" fn solnet_free_string(ptr: *mut c_char) {
+    if !ptr.is_null() {
+        unsafe { drop(CString::from_raw(ptr)); }
     }
-    unsafe { drop(CString::from_raw(ptr)); }
 }
 
-// ── Android JNI wrappers ─────────────────────────────────────────────────────
-// Only compiled when building for Android with `--features android-jni`.
-// These bridge the JNI name-mangled function signatures to the flat
-// extern "C" functions above.
-//
-// Package: network.solnet.app
-// Class:   SolnetDaemonModule
+// ── JNI: Android Bridges (com.solnet.mobile.SolnetNative) ─────────────────────
 
 #[cfg(feature = "android-jni")]
-mod jni_bridge {
+pub mod jni_bridge {
+    use super::*;
     use jni::JNIEnv;
     use jni::objects::{JByteArray, JClass, JString};
-    use jni::sys::{jboolean, jbyte, jstring, JNI_FALSE, JNI_TRUE};
-    use std::sync::atomic::Ordering;
+    use jni::sys::{jboolean, jbyte, jint, jstring, JNI_FALSE, JNI_TRUE};
 
     #[no_mangle]
-    pub extern "system" fn Java_network_solnet_app_SolnetDaemonModule_rustInitGovernor<'local>(
+    pub extern "system" fn Java_com_solnet_mobile_SolnetNative_solnetInitGovernor<'local>(
         env: JNIEnv<'local>,
         _class: JClass<'local>,
         token: JByteArray<'local>,
     ) -> jboolean {
-        let bytes: Vec<u8> = match env.convert_byte_array(&token) {
+        let bytes = match env.convert_byte_array(&token) {
             Ok(b) => b,
             Err(_) => return JNI_FALSE,
         };
-        if bytes.len() != 32 {
-            return JNI_FALSE;
-        }
-        let mut arr = [0u8; 32];
-        arr.copy_from_slice(&bytes);
-        if super::GOVERNOR_TOKEN.set(arr).is_ok() {
-            JNI_TRUE
-        } else {
-            JNI_FALSE
-        }
+        if solnet_init_governor(bytes.as_ptr(), bytes.len()) { JNI_TRUE } else { JNI_FALSE }
     }
 
     #[no_mangle]
-    pub extern "system" fn Java_network_solnet_app_SolnetDaemonModule_rustStartRelay<'local>(
+    pub extern "system" fn Java_com_solnet_mobile_SolnetNative_solnetGetRandomBytes<'local>(
+        env: JNIEnv<'local>,
+        _class: JClass<'local>,
+        length: jint,
+    ) -> jstring {
+        let ptr = solnet_get_random_bytes(length as usize);
+        let res = unsafe { CStr::from_ptr(ptr) }.to_str().unwrap_or("error");
+        let output = env.new_string(res).unwrap().into_raw();
+        solnet_free_string(ptr);
+        output
+    }
+
+    #[no_mangle]
+    pub extern "system" fn Java_com_solnet_mobile_SolnetNative_solnetGenerateKeypair<'local>(
+        env: JNIEnv<'local>,
+        _class: JClass<'local>,
+        token: JByteArray<'local>,
+    ) -> jstring {
+        let auth = match env.convert_byte_array(&token) {
+            Ok(b) => b,
+            Err(_) => return std::ptr::null_mut(),
+        };
+        let ptr = solnet_generate_keypair(auth.as_ptr(), auth.len());
+        if ptr.is_null() { return std::ptr::null_mut(); }
+        let res = unsafe { CStr::from_ptr(ptr) }.to_str().unwrap_or("error");
+        let output = env.new_string(res).unwrap().into_raw();
+        solnet_free_string(ptr);
+        output
+    }
+
+    #[no_mangle]
+    pub extern "system" fn Java_com_solnet_mobile_SolnetNative_solnetSignTransaction<'local>(
+        mut env: JNIEnv<'local>,
+        _class: JClass<'local>,
+        secret_key: JString<'local>,
+        message: JString<'local>,
+        token: JByteArray<'local>,
+    ) -> jstring {
+        let sk: String = env.get_string(&secret_key).unwrap().into();
+        let msg: String = env.get_string(&message).unwrap().into();
+        let auth = env.convert_byte_array(&token).unwrap();
+        
+        let c_sk = CString::new(sk).unwrap();
+        let c_msg = CString::new(msg).unwrap();
+        
+        let ptr = solnet_sign_transaction(c_sk.as_ptr(), c_msg.as_ptr(), auth.as_ptr(), auth.len());
+        if ptr.is_null() { return std::ptr::null_mut(); }
+        let res = unsafe { CStr::from_ptr(ptr) }.to_str().unwrap_or("error");
+        let output = env.new_string(res).unwrap().into_raw();
+        solnet_free_string(ptr);
+        output
+    }
+
+    #[no_mangle]
+    pub extern "system" fn Java_com_solnet_mobile_SolnetNative_solnetStartRelay<'local>(
         mut env: JNIEnv<'local>,
         _class: JClass<'local>,
         config_json: JString<'local>,
+        token: JByteArray<'local>,
     ) -> jboolean {
-        let json: String = match env.get_string(&config_json) {
-            Ok(s) => s.into(),
-            Err(_) => return JNI_FALSE,
-        };
-        match super::relay_client::RelayConfig::from_json(&json) {
-            Ok(config) => {
-                if super::relay_client::start(config).is_ok() {
-                    JNI_TRUE
-                } else {
-                    JNI_FALSE
-                }
-            }
-            Err(_) => JNI_FALSE,
-        }
+        let json: String = env.get_string(&config_json).unwrap().into();
+        let auth = env.convert_byte_array(&token).unwrap();
+        let c_json = CString::new(json).unwrap();
+        if solnet_start_relay(c_json.as_ptr(), auth.as_ptr(), auth.len()) { JNI_TRUE } else { JNI_FALSE }
     }
 
     #[no_mangle]
-    pub extern "system" fn Java_network_solnet_app_SolnetDaemonModule_rustStopRelay<'local>(
-        _env: JNIEnv<'local>,
+    pub extern "system" fn Java_com_solnet_mobile_SolnetNative_solnetStopRelay<'local>(
+        env: JNIEnv<'local>,
         _class: JClass<'local>,
+        token: JByteArray<'local>,
     ) -> jboolean {
-        if super::relay_client::stop() {
-            JNI_TRUE
-        } else {
-            JNI_FALSE
-        }
+        let auth = env.convert_byte_array(&token).unwrap();
+        if solnet_stop_relay(auth.as_ptr(), auth.len()) { JNI_TRUE } else { JNI_FALSE }
     }
 
     #[no_mangle]
-    pub extern "system" fn Java_network_solnet_app_SolnetDaemonModule_rustGetDaemonStats<'local>(
+    pub extern "system" fn Java_com_solnet_mobile_SolnetNative_solnetGetDaemonStats<'local>(
         env: JNIEnv<'local>,
         _class: JClass<'local>,
     ) -> jstring {
-        let stats = super::relay_client::get_stats_json();
-        // JNI strings are managed by JVM GC — no rust_free_string needed
-        env.new_string(stats)
-            .map(|s| s.into_raw())
-            .unwrap_or(std::ptr::null_mut())
+        let stats = relay_client::get_stats_json();
+        env.new_string(stats).unwrap().into_raw()
     }
 
     #[no_mangle]
-    pub extern "system" fn Java_network_solnet_app_SolnetDaemonModule_rustSetThrottleStateAuthenticated<'local>(
+    pub extern "system" fn Java_com_solnet_mobile_SolnetNative_solnetSetThrottleState<'local>(
         env: JNIEnv<'local>,
         _class: JClass<'local>,
         state: jbyte,
         token: JByteArray<'local>,
     ) -> jboolean {
-        let bytes: Vec<u8> = match env.convert_byte_array(&token) {
-            Ok(b) => b,
-            Err(_) => return JNI_FALSE,
-        };
-        if bytes.len() != 32 {
-            return JNI_FALSE;
-        }
-        let expected = match super::GOVERNOR_TOKEN.get() {
-            Some(t) => t,
-            None => return JNI_FALSE,
-        };
-
-        // Constant-time comparison — same pattern as the C FFI path
-        let mut diff: u8 = 0;
-        for (a, b) in bytes.iter().zip(expected.iter()) {
-            diff |= a ^ b;
-        }
-        if diff != 0 {
-            return JNI_FALSE;
-        }
-
-        let clamped = (state as u8).min(2);
-        super::GOVERNOR_STATE.store(clamped, Ordering::SeqCst);
-        super::governor().set_state(super::mobile_governor::ThrottleState::from_u8(clamped));
-        super::mobile_governor::update_global_state(clamped);
-        JNI_TRUE
+        let auth = env.convert_byte_array(&token).unwrap();
+        if solnet_set_throttle_state(state as u8, auth.as_ptr(), auth.len()) { JNI_TRUE } else { JNI_FALSE }
     }
+
+    #[no_mangle]
+    pub extern "system" fn Java_com_solnet_mobile_SolnetNative_solnetGetThrottleState<'local>(
+        _env: JNIEnv<'local>,
+        _class: JClass<'local>,
+    ) -> jint {
+        solnet_get_throttle_state() as jint
+    }
+
+    #[no_mangle]
+    pub extern "system" fn Java_com_solnet_mobile_SolnetNative_solnetRegisterLogCallback<'local>(
+        env: JNIEnv<'local>,
+        _class: JClass<'local>,
+        callback: jni::objects::JObject<'local>,
+    ) {
+        if let Ok(jvm) = env.get_java_vm() {
+            let _ = JAVA_VM.set(jvm);
+        }
+        if let Ok(glob) = env.new_global_ref(callback) {
+            let _ = LOG_CALLBACK.set(glob);
+        }
+    }
+}
+
+#[cfg(feature = "android-jni")]
+static JAVA_VM: OnceLock<jni::JavaVM> = OnceLock::new();
+#[cfg(feature = "android-jni")]
+static LOG_CALLBACK: OnceLock<jni::objects::GlobalRef> = OnceLock::new();
+
+/// Internal helper to push a log line to the Java UI.
+pub fn push_log_to_java(line: &str) {
+    #[cfg(feature = "android-jni")]
+    {
+        if let (Some(jvm), Some(callback)) = (JAVA_VM.get(), LOG_CALLBACK.get()) {
+            if let Ok(mut env) = jvm.attach_current_thread() {
+                if let Ok(jline) = env.new_string(line) {
+                    let _ = env.call_method(
+                        callback,
+                        "onDaemonLog",
+                        "(Ljava/lang/String;)V",
+                        &[jni::objects::JValue::from(&jline)],
+                    );
+                }
+            }
+        }
+    }
+    // Also output to stdout for logcat
+    println!("SOLNET_LOG|{}", line);
 }

@@ -9,7 +9,7 @@ interface NodeRankBadgeProps {
 }
 
 export const getRankInfo = (requests: number) => {
-  if (requests === 0)       return { rank: 'Dormant Node', color: Colors.textTertiary };
+  if (requests === 0)       return null;
   if (requests < 100)      return { rank: 'Genesis Operator', color: Colors.purple };
   if (requests < 500)      return { rank: 'Relay Runner', color: Colors.cyan };
   if (requests < 2000)     return { rank: 'Mesh Weaver', color: Colors.green };
@@ -20,6 +20,8 @@ export const getRankInfo = (requests: number) => {
 export default function NodeRankBadge({ requestsServed }: NodeRankBadgeProps) {
   const info = useMemo(() => getRankInfo(requestsServed), [requestsServed]);
   const scale = useSharedValue(1);
+
+  if (!info) return null;
 
   // Pulse when rank changes
   useEffect(() => {

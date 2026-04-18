@@ -16,7 +16,7 @@
  *   to the Railway server via HTTPS and tracks earnings atomically.
  */
 
-import { NativeModules, NativeEventEmitter, Platform, EmitterSubscription } from 'react-native';
+import { NativeModules, DeviceEventEmitter, Platform, EmitterSubscription } from 'react-native';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -48,20 +48,30 @@ export interface DaemonStats {
 
 // ─── Native Module Interface ─────────────────────────────────────────────────
 
-interface SolnetDaemonNative {
-  setThrottleState(state: ThrottleState): Promise<void>;
-  startDaemon(): Promise<void>;
-  stopDaemon(): Promise<void>;
+interface SolnetNativeInterface {
+  // Crypto Primitives
+  generateKeypair(): Promise<string>; // Returns JSON string
+  getRandomBytes(length: number): Promise<string>; // Returns hex string
+  signTransaction(secretKey: string, message: string): Promise<string>; // Returns hex signature
+
+  // Relay Lifecycle
+  startRelay(configJson: string): Promise<boolean>;
+  stopRelay(): Promise<boolean>;
   getDaemonStats(): Promise<Record<string, any>>;
-  startRelay(configJson: string): Promise<{ ok: boolean; mode?: string }>;
-  stopRelay(): Promise<{ ok: boolean }>;
+
+  // Governor Controls
+  setThrottleState(state: number): Promise<void>;
+  getThrottleState(): Promise<number>;
 }
 
 // ─── Module Resolution ───────────────────────────────────────────────────────
 
-const { SolnetDaemon: _NativeModule } = NativeModules as {
-  SolnetDaemon: SolnetDaemonNative | undefined;
-};
+/**
+ * Enterprise Native Module Resolver.
+ * Tries the new 'SolnetNative' name first, then falls back to 'SolnetDaemon'.
+ */
+const _NativeModule = (NativeModules.SolnetNative || NativeModules.SolnetDaemon) as 
+  SolnetNativeInterface | undefined;
 
 const IS_STUB = !_NativeModule;
 
@@ -70,29 +80,24 @@ const IS_STUB = !_NativeModule;
 if (IS_STUB && __DEV__) {
   console.warn(
     '[DaemonBridge] ⚠️  Running in STUB mode. ' +
-    'Native daemon is NOT active. ' +
-    'Governor controls are simulated. ' +
+    'Native daemon is NOT active (Simulator/Expo Go). ' +
     'Build a dev client with: npx expo run:ios / npx expo run:android'
   );
 }
 
 if (IS_STUB && !__DEV__) {
   // Production build without native module = fatal build configuration error.
-  // This should never happen if the app was built correctly with
-  // `expo run:ios` or `expo run:android` (not bare Expo Go).
   throw new Error(
-    'DaemonBridge: Native module "SolnetDaemon" missing in production build. ' +
-    'This is a build configuration error. The Rust daemon library ' +
-    '(libsns_daemon.dylib / libsns_daemon.so) must be linked into the ' +
-    'native project before publishing.'
+    'DaemonBridge: Native module "SolnetNative" missing in production build. ' +
+    'This is a build configuration error. The Rust core library ' +
+    '(libsolnet_native.a / libsolnet_native.so) must be linked into the ' +
+    'native project and exported as SolnetNative.'
   );
 }
 
 // ─── Event Emitter ───────────────────────────────────────────────────────────
 
-const emitter = !IS_STUB
-  ? new NativeEventEmitter(_NativeModule as any)
-  : null;
+const emitter = _NativeModule ? DeviceEventEmitter : null;
 
 // ─── Stub stats (returned when native module is absent) ──────────────────────
 
@@ -142,30 +147,57 @@ export const DaemonBridge = {
   },
 
   /**
+   * Securely generate a new Ed25519 keypair using the Rust engine.
+   * Requires session token auth (handled automatically in native).
+   */
+  async generateKeypair(): Promise<{ publicKey: string; secretKey: string }> {
+    if (IS_STUB) throw new Error('Keygen unavailable in STUB mode');
+    const result = await _NativeModule!.generateKeypair();
+    return JSON.parse(result);
+  },
+
+  /**
+   * Sign a message using the native Rust Ed25519 implementation.
+   */
+  async signTransaction(secretKey: string, message: string): Promise<string> {
+    if (IS_STUB) throw new Error('Signing unavailable in STUB mode');
+    return _NativeModule!.signTransaction(secretKey, message);
+  },
+
+  /**
+   * Get random bytes from the OS-backed Rust randomness engine.
+   */
+  async getRandomBytes(length: number): Promise<string> {
+    if (IS_STUB) return '00'.repeat(length);
+    return _NativeModule!.getRandomBytes(length);
+  },
+
+  /**
    * Tell the Rust daemon which power mode to operate in.
-   * In authenticated mode (iOS/Android), this uses a session token.
-   * In stub mode, this is a no-op.
+   * Map the string types to the integer codes expected by Rust (0, 1, 2).
    */
   async setThrottleState(state: ThrottleState): Promise<void> {
     if (IS_STUB) return;
-    return _NativeModule!.setThrottleState(state);
+    const map: Record<ThrottleState, number> = {
+      FULL_POWER: 0,
+      CONSERVE: 1,
+      STANDBY: 2,
+    };
+    return _NativeModule!.setThrottleState(map[state]);
   },
 
   /**
    * Fetch runtime stats from the Rust relay client.
    * Returns stub stats with `isStub: true` when the module is unavailable.
-   * Callers should check `isStub` and show a "DEMO MODE" indicator.
    */
   async getStats(): Promise<DaemonStats> {
     if (IS_STUB) return STUB_STATS;
 
     const raw = await _NativeModule!.getDaemonStats();
-    // Android returns a WritableMap, iOS returns a dictionary
-    // Both should have the same keys from relay_client::get_stats_json()
     return {
       requests_served: raw.requests_served ?? 0,
       earnings_lamports: raw.earnings_lamports ?? 0,
-      uptime_seconds: raw.uptime_seconds ?? raw.uptime_secs ?? 0,
+      uptime_seconds: raw.uptime_seconds ?? 0,
       governor_state: raw.governor_state ?? 0,
       is_running: raw.is_running ?? false,
       peer_count: raw.peer_count ?? 0,

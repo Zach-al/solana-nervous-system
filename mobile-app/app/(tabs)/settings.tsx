@@ -47,8 +47,8 @@ export default function SettingsScreen() {
           <Text className="text-white">Version</Text>
           <Text className="text-textSecondary">{CONFIG.APP_VERSION}</Text>
         </View>
-        <TouchableOpacity>
-          <Text className="text-primary">Privacy Policy</Text>
+        <TouchableOpacity onPress={() => router.push('/settings/privacy')}>
+          <Text className="text-primary font-bold">Privacy Protocol</Text>
         </TouchableOpacity>
       </View>
       </ScrollView>

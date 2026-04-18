@@ -16,6 +16,7 @@ import { useWallet } from '../../hooks/useWallet';
 import { useRouter } from 'expo-router';
 import { Colors, Radius, Spacing, Typography } from '../../constants/antigravity';
 import { useDeviceGovernor } from '../../hooks/useDeviceGovernor';
+import { useLocalNodeStats } from '../../hooks/useLocalNodeStats';
 import { DaemonBridge } from '../../services/DaemonBridge';
 
 // Components
@@ -47,8 +48,9 @@ export default function DashboardScreen() {
   const { truncatedAddress } = useWallet();
   const deviceState = useDeviceGovernor();
 
-  // Refresh query
+  // Refresh stats (Server + Local Native Engine)
   useNodeStatus();
+  useLocalNodeStats();
 
   // ── Sync throttle state to Rust daemon whenever device state changes ──
   useEffect(() => {
@@ -85,8 +87,14 @@ export default function DashboardScreen() {
           {/* ZONE 1: HEADER */}
           <View style={styles.header}>
             <View>
-              <NeonText color={Colors.cyan} size={28} letterSpacing={2}>SOLNET</NeonText>
-              <NodeRankBadge requestsServed={requestsServed} />
+              <NeonText 
+                color={isActive ? Colors.green : Colors.cyan} 
+                size={28} 
+                letterSpacing={2}
+              >
+                SOLNET
+              </NeonText>
+              {requestsServed > 0 && <NodeRankBadge requestsServed={requestsServed} />}
             </View>
             <TouchableOpacity 
               onPress={() => router.push('/settings')}

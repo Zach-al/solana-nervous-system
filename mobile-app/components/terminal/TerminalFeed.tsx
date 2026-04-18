@@ -1,13 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, StyleSheet, Text, FlatList } from 'react-native';
+import { View, StyleSheet, Text, ScrollView } from 'react-native';
 import Animated, { FadeIn, FadeOut, Layout } from 'react-native-reanimated';
 import { Colors, Radius, Spacing, Typography } from '../../constants/antigravity';
 import GlassCard from '../ui/GlassCard';
 
+import { DaemonBridge } from '../../services/DaemonBridge';
+
 interface LogEntry {
   id: string;
   timestamp: string;
-  type: 'info' | 'success' | 'warn' | 'peer' | 'settle';
+  type: 'info' | 'success' | 'warn' | 'peer' | 'settle' | 'native';
   message: string;
 }
 
@@ -16,24 +18,11 @@ interface TerminalFeedProps {
   nodeId: string | null;
 }
 
-const LOG_MESSAGES = [
-  { type: 'peer',    message: 'P2P handshake complete — Singapore relay' },
-  { type: 'info',    message: 'Kademlia DHT: routing table updated' },
-  { type: 'success', message: 'Batch settled: +0.00010 SOL' },
-  { type: 'info',    message: 'Cache hit: getSlot() → L1 (0.3ms)' },
-  { type: 'peer',    message: 'New peer: /ip4/139.x.x.x/tcp/9001' },
-  { type: 'info',    message: 'RPC forwarded: getBalance() → upstream' },
-  { type: 'success', message: 'Request served: +100 lamports' },
-  { type: 'warn',    message: 'Upstream latency spike: 340ms — rerouting' },
-  { type: 'info',    message: 'libp2p Kademlia: 1 peer in routing table' },
-  { type: 'settle',  message: 'ZK receipt: batch #47 queued for settlement' },
-  { type: 'info',    message: 'Health check: node_id confirmed live' },
-];
-
 export default function TerminalFeed({ isActive, nodeId }: TerminalFeedProps) {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [cursorVisible, setCursorVisible] = useState(true);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const scrollRef = useRef<ScrollView>(null);
 
   useEffect(() => {
     const cursorInterval = setInterval(() => {
@@ -44,25 +33,21 @@ export default function TerminalFeed({ isActive, nodeId }: TerminalFeedProps) {
 
   useEffect(() => {
     if (isActive) {
-      const addRandomLog = () => {
-        const template = LOG_MESSAGES[Math.floor(Math.random() * LOG_MESSAGES.length)];
+      // Wire up real-time logs from the Rust engine
+      const sub = DaemonBridge.onLogLine((line) => {
         const newLog: LogEntry = {
-          id: Math.random().toString(36).substr(2, 9),
+          id: `log-${Date.now()}-${Math.random()}`,
           timestamp: new Date().toLocaleTimeString('en-GB'),
-          ...template as any
+          type: line.includes('WARN') ? 'warn' : 
+                 line.includes('ERR') ? 'warn' : 
+                 line.includes('SUCCESS') ? 'success' : 'native',
+          message: line,
         };
-        
-        setLogs(prev => [newLog, ...prev].slice(0, 20));
-        
-        const nextDelay = 8000 + Math.random() * 7000;
-        // @ts-ignore - Type mismatch between NodeJS.Timeout and number in RN/Web
-        timerRef.current = setTimeout(addRandomLog, nextDelay);
-      };
+        setLogs(prev => [newLog, ...prev].slice(0, 30));
+      });
 
-      // @ts-ignore
-      timerRef.current = setTimeout(addRandomLog, 2000);
+      return () => sub?.remove();
     } else {
-      if (timerRef.current) clearTimeout(timerRef.current);
       setLogs(prev => [
         {
           id: `shutdown-${Date.now()}`,
@@ -71,12 +56,8 @@ export default function TerminalFeed({ isActive, nodeId }: TerminalFeedProps) {
           message: 'Node deactivated — earnings paused'
         } as LogEntry,
         ...prev
-      ].slice(0, 20));
+      ].slice(0, 30));
     }
-
-    return () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
-    };
   }, [isActive]);
 
   const getColor = (type: LogEntry['type']) => {
@@ -85,6 +66,7 @@ export default function TerminalFeed({ isActive, nodeId }: TerminalFeedProps) {
       case 'warn':    return Colors.warning;
       case 'peer':    return Colors.purple;
       case 'settle':  return Colors.cyan;
+      case 'native':  return Colors.textPrimary;
       default:        return Colors.textSecondary;
     }
   };
@@ -96,33 +78,40 @@ export default function TerminalFeed({ isActive, nodeId }: TerminalFeedProps) {
         <Text style={[styles.cursor, { opacity: cursorVisible ? 1 : 0 }]}>█</Text>
       </View>
       
-      <View style={styles.list}>
+      <ScrollView 
+        ref={scrollRef}
+        style={styles.list}
+        onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
+        showsVerticalScrollIndicator={false}
+      >
         {logs.map((item, index) => (
           <Animated.View 
             key={item.id}
             entering={FadeIn.duration(300).delay(50)}
             layout={Layout.springify()}
-            style={[styles.entry, { opacity: 1 - (index * 0.05) }]}
           >
-            <Text style={styles.entryText}>
-              <Text style={styles.monoDim}>{`> [${item.timestamp}] `}</Text>
-              <Text style={{ color: getColor(item.type) }}>{item.message}</Text>
-            </Text>
+            <View style={[styles.entry, { opacity: index === 0 ? 1 : Math.max(0.4, 1 - (index * 0.15)) }]}>
+              <Text style={styles.entryText} numberOfLines={2}>
+                <Text style={styles.monoDim}>{`> `}</Text>
+                <Text style={{ color: getColor(item.type) }}>{item.message}</Text>
+              </Text>
+            </View>
           </Animated.View>
         ))}
-      </View>
+      </ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    height: 180,
+    height: 160,
     backgroundColor: 'rgba(0,0,0,0.6)',
     borderWidth: 1,
     borderColor: Colors.glassBorder,
     borderRadius: Radius.md,
-    padding: 12,
+    padding: 14,
+    overflow: 'hidden', 
   },
   header: {
     flexDirection: 'row',

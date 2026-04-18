@@ -35,20 +35,20 @@ cargo build --release --target x86_64-apple-ios \
 
 # Universal sim slice
 echo "→ lipo: universal simulator..."
-mkdir -p "$DAEMON/target/sim-universal/release"
+mkdir -p "$ROOT/target/sim-universal/release"
 lipo -create \
-    "$DAEMON/target/aarch64-apple-ios-sim/release/libsns_daemon.a" \
-    "$DAEMON/target/x86_64-apple-ios/release/libsns_daemon.a" \
-    -output "$DAEMON/target/sim-universal/release/libsns_daemon.a"
+    "$ROOT/target/aarch64-apple-ios-sim/release/libsns_daemon.a" \
+    "$ROOT/target/x86_64-apple-ios/release/libsns_daemon.a" \
+    -output "$ROOT/target/sim-universal/release/libsns_daemon.a"
 
 # XCFramework
 echo "→ xcodebuild: XCFramework..."
 rm -rf "$OUT/SolnetDaemon.xcframework"
 mkdir -p "$OUT"
 xcodebuild -create-xcframework \
-    -library "$DAEMON/target/aarch64-apple-ios/release/libsns_daemon.a" \
+    -library "$ROOT/target/aarch64-apple-ios/release/libsns_daemon.a" \
     -headers "$DAEMON/include" \
-    -library "$DAEMON/target/sim-universal/release/libsns_daemon.a" \
+    -library "$ROOT/target/sim-universal/release/libsns_daemon.a" \
     -headers "$DAEMON/include" \
     -output "$OUT/SolnetDaemon.xcframework"
 
