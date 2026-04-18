@@ -20,11 +20,11 @@ jobs:
         run: cargo install cargo-audit --locked
 
       - name: Run cargo audit
-        run: cd sns-daemon && cargo audit
+        run: cargo audit
         # Fails the build if any dependency has a known CVE
 
       - name: Cargo check (verify build)
-        run: cd sns-daemon && cargo check --release
+        run: cargo check --release
 
   npm-audit:
     name: NPM Audit (SDK + Dashboard)
