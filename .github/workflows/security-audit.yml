@@ -13,6 +13,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-registry-
+
+      - name: Cache cargo target
+        uses: actions/cache@v4
+        with:
+          path: target
+          key: ${{ runner.os }}-cargo-target-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-target-
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
@@ -23,8 +41,26 @@ jobs:
         run: cargo audit
         # Fails the build if any dependency has a known CVE
 
-      - name: Cargo check (verify build)
-        run: cargo check --release --verbose
+      - name: Prepare CI-friendly release profile
+        run: |
+          mkdir -p .cargo
+          cat > .cargo/config.toml <<'EOF'
+          [profile.release]
+          # CI: avoid extremely heavy LTO/linking that OOMs the runner
+          opt-level = 2
+          lto = false
+          codegen-units = 16
+          debug = false
+          strip = false
+          overflow-checks = false
+          panic = "abort"
+          EOF
+
+      - name: Fast cargo check (catch compile errors quickly)
+        run: cargo check --all-targets --verbose
+
+      - name: Cargo built (CI-friendly release, single crate)
+        run: cargo build -p sns-daemon --release --verbose
 
   npm-audit:
     name: NPM Audit (SDK + Dashboard)
