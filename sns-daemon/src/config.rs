@@ -80,9 +80,9 @@ impl Config {
                 .unwrap_or_else(|_| "https://api.devnet.solana.com".to_string()),
             http_port: std::env::var("PORT")
                 .or_else(|_| std::env::var("HTTP_PORT"))
-                .unwrap_or_else(|_| "9000".to_string())
+                .unwrap_or_else(|_| "8080".to_string())
                 .parse::<u16>()
-                .unwrap_or(9000),
+                .unwrap_or(8080),
             p2p_port: env::var("P2P_PORT")
                 .ok()
                 .and_then(|v| v.parse().ok())

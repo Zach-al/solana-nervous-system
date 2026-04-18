@@ -285,12 +285,19 @@ async fn main() -> Result<()> {
         // Railway docs: "Your web server should bind to 0.0.0.0"
         // https://docs.railway.com/guides/fixing-common-errors
         let bind_addr = format!("0.0.0.0:{}", cfg_for_rpc.http_port);
-        eprintln!("[SOLNET] STAGE 2: BINDING TO {}...", bind_addr);
+        eprintln!("[DIAG] SOLNET STAGE 2.1: BINDING TO TCP {}...", bind_addr);
         std::io::stderr().flush().ok();
 
-        let listener = tokio::net::TcpListener::bind(&bind_addr)
-            .await
-            .expect(&format!("FATAL: Cannot bind to {}", bind_addr));
+        let listener = match tokio::net::TcpListener::bind(&bind_addr).await {
+            Ok(l) => {
+                eprintln!("[DIAG] SOLNET STAGE 2.2: BIND SUCCESS ON {}", bind_addr);
+                l
+            },
+            Err(e) => {
+                eprintln!("[DIAG] SOLNET FATAL: FAILED TO BIND TO {}: {}", bind_addr, e);
+                std::process::exit(1);
+            }
+        };
 
         tracing::info!(
             "╔══════════════════════════════════╗"

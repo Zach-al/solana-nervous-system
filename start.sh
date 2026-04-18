@@ -9,11 +9,9 @@ echo "[DIAG] OS: $(uname -a)"
 # Increase file descriptor limit for Enterprise p2p mesh
 ulimit -n 65535 || echo "[WARN] Could not increase ulimit"
 
+# Ensure environment is clean
 echo "[DIAG] Environment Check:"
 env | grep -E "PORT|SOLANA_RPC_URL|NODE_NAME" || echo "No public vars found"
-
-# Ensure no stale processes are binding the port
-fuser -k 8080/tcp 2>/dev/null || true
 
 # Logic to find the binary (Prefer workspace build)
 WORKSPACE_BINARY="./target/release/sns-daemon"
