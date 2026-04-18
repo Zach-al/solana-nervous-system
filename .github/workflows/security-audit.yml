@@ -20,7 +20,7 @@ jobs:
         run: cargo install cargo-audit --locked
 
       - name: Run cargo audit
-        run: cargo audit --verbose
+        run: cargo audit
         # Fails the build if any dependency has a known CVE
 
       - name: Cargo check (verify build)
