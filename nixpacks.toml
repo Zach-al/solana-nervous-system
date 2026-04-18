@@ -1,0 +1,5 @@
+[phases.setup]
+nixPkgs = ["...", "pkg-config", "openssl"]
+
+[phases.build]
+cmds = ["cd sns-daemon && CARGO_BUILD_JOBS=2 cargo build --release"]
