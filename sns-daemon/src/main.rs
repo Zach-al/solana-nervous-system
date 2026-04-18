@@ -342,10 +342,12 @@ async fn main() -> Result<()> {
     });
 
     // Diagnostic Task: Heartbeat to verify process life during 502 periods
+    let boot_time = std::time::Instant::now();
     tokio::spawn(async move {
         loop {
             tokio::time::sleep(tokio::time::Duration::from_secs(30)).await;
-            tracing::info!("[HEARTBEAT] SOLNET DAEMON ACTIVE | Uptime: {}s", Utc::now().timestamp());
+            let uptime = boot_time.elapsed().as_secs();
+            tracing::info!("[HEARTBEAT] SOLNET DAEMON ACTIVE | Uptime: {}s", uptime);
             eprintln!("[HEARTBEAT] SOLNET DAEMON ACTIVE");
         }
     });
