@@ -8,7 +8,7 @@ description = "Native JNI/FFI core for SOLNET mobile integration"
 [lib]
 name = "solnet_native"
 path = "src/lib.rs"
-crate-type = ["cdylib", "staticlib"]
+crate-type = ["cdylib", "staticlib", "rlib"]
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }

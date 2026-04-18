@@ -18,8 +18,8 @@ pub mod peer_guard;
 pub mod telemetry;
 pub mod consensus;
 
-// Shared modules from sns-native
-pub use sns_native::{platform, battery_guard, mobile_peer, mobile_governor, relay_client};
+// Shared modules from solnet-native (renamed crate)
+pub use solnet_native::{platform, battery_guard, mobile_peer, mobile_governor, relay_client};
 
 use anyhow::Result;
 use chrono::Utc;
