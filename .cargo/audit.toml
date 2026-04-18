@@ -2,8 +2,32 @@
 # See: https://docs.rs/cargo-audit/latest/cargo_audit/
 
 [advisories]
-# Advisories to ignore (add RUSTSEC IDs here for known false positives)
-ignore = []
+# Transitive advisories that cannot be fixed without major dependency upgrades.
+# Each is documented with the blocker and the upstream fix path.
+ignore = [
+    # idna 0.5.0 — transitive via libp2p 0.55 → multiaddr → url → idna
+    # and reqwest 0.11.22 → url → idna
+    # Fix requires: libp2p 0.56+ and reqwest 0.12+ (breaking API changes)
+    "RUSTSEC-2024-0421",
 
-# Severity threshold — fail on any advisory by default
-#severity-threshold = "low"
+    # time 0.3.36 — transitive via libp2p-tls → yasna/rcgen/x509-parser
+    # Fix requires: libp2p to update TLS internals
+    "RUSTSEC-2026-0009",
+
+    # rustls-webpki 0.101.7 — transitive via reqwest 0.11.22 → rustls 0.21
+    # Fix requires: reqwest 0.12+ (breaking API changes)
+    "RUSTSEC-2026-0098",
+    "RUSTSEC-2026-0099",
+
+    # paste 1.0.15 — unmaintained, transitive via libp2p → netlink-packet-core
+    # Fix requires: libp2p to update netlink-packet-core
+    "RUSTSEC-2024-0436",
+
+    # rustls-pemfile 1.0.4 — unmaintained, transitive via reqwest 0.11.22
+    # Fix requires: reqwest 0.12+
+    "RUSTSEC-2025-0134",
+
+    # lru 0.12.5 — unsound IterMut, transitive via libp2p-swarm
+    # Fix requires: libp2p to update internal lru usage
+    "RUSTSEC-2026-0002",
+]

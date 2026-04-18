@@ -17,12 +17,9 @@ axum = { version = "0.7.1", features = ["macros"] }
 base64 = "0.21.5"
 chrono = { version = "0.4.31", features = ["serde"] }
 dashmap = "6.0.1"
-dotenv = "0.15.0"
 futures = "0.3.29"
 hex = "0.4.3"
 reqwest = { version = "=0.11.22", default-features = false, features = ["json", "rustls-tls"] }
-url = "=2.5.0"
-idna = "=0.5.0"
 serde = { version = "1.0.190", features = ["derive"] }
 serde_json = "1.0.108"
 sha2 = "0.10.8"
@@ -38,11 +35,6 @@ x25519-dalek = { version = "2.0.0", features = ["static_secrets"] }
 aes-gcm = "0.10.3"
 hmac = "0.12.1"
 tower = { version = "0.4.13", features = ["util", "timeout"] }
-time = "=0.3.36"
-icu_collections = "=1.5.0"
-icu_locid = "=1.5.0"
-icu_normalizer = "=1.5.0"
-icu_properties = "=1.5.0"
 rustls = "0.23"
 libp2p-connection-limits = "0.6.0"
 
