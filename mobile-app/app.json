@@ -2,57 +2,48 @@
   "expo": {
     "name": "SOLNET",
     "slug": "solnet",
-    "main": "./index.js",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
     "scheme": "solnet",
-    "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
+    "entryPoint": "./index.js",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#000000"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "network.solnet.app",
-      "infoPlist": {
-        "UIBackgroundModes": ["fetch", "remote-notification"]
-      }
+      "bundleIdentifier": "com.solnet.mobile",
+      "buildNumber": "1"
     },
     "android": {
-      "package": "network.solnet.app",
-      "permissions": [
-        "FOREGROUND_SERVICE",
-        "RECEIVE_BOOT_COMPLETED",
-        "INTERNET"
-      ],
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/images/android-icon-foreground.png"
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#000000"
       },
-      "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "package": "com.solnet.mobile",
+      "versionCode": 1,
+      "permissions": [
+        "android.permission.INTERNET",
+        "android.permission.ACCESS_NETWORK_STATE",
+        "android.permission.BATTERY_STATS"
+      ]
     },
     "web": {
-      "output": "static",
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "38da7342-3f52-4141-b844-c7c909d35c5a"
+      }
     },
     "plugins": [
-      "expo-router",
-      "expo-secure-store",
-      "expo-notifications",
-      ["expo-background-fetch", { "minimumInterval": 900 }],
-      [
-        "expo-splash-screen",
-        {
-          "image": "./assets/images/splash-icon.png",
-          "imageWidth": 200,
-          "resizeMode": "contain",
-          "backgroundColor": "#0A0A0F"
-        }
-      ]
-    ],
-    "experiments": {
-      "typedRoutes": true,
-      "reactCompiler": true
-    },
-    "entryPoint": "./index.js"
+      "expo-router"
+    ]
   }
 }

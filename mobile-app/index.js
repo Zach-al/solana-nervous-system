@@ -1,40 +1,21 @@
-// mobile-app/index.js
-// ──────────────────────────────────────────────────────
-// CRITICAL: Polyfills MUST load before ANYTHING else.
-// Order is load-bearing. Do not reorder these lines.
-// ──────────────────────────────────────────────────────
-
-// Step 1: Seed the PRNG — must be absolute first import
 import 'react-native-get-random-values';
-
-// Step 2: Web Crypto API polyfill
 import { polyfillWebCrypto } from 'expo-standard-web-crypto';
-
-// Step 3: Buffer global (required by @solana/web3.js)
 import { Buffer } from 'buffer';
 
+// Force polyfill BEFORE anything else
 global.Buffer = Buffer;
 polyfillWebCrypto();
 
-// Step 4: Verify crypto.getRandomValues is callable.
-// Falls back to expo-crypto native impl if the polyfill silently failed.
+// Fallback if expo polyfill fails
 if (typeof global.crypto?.getRandomValues !== 'function') {
-  console.warn('[SOLNET] crypto.getRandomValues not defined after polyfill — applying expo-crypto fallback');
-  const { getRandomValues: expoGetRandomValues } = require('expo-crypto');
-  global.crypto = {
-    ...(global.crypto ?? {}),
-    getRandomValues: (array) => {
-      const randomBytes = expoGetRandomValues(new Uint8Array(array.byteLength));
-      array.set(randomBytes);
-      return array;
-    },
+  const { getRandomValues } = require('expo-crypto');
+  global.crypto = global.crypto || {};
+  global.crypto.getRandomValues = (arr) => {
+    const bytes = getRandomValues(new Uint8Array(arr.length));
+    arr.set(bytes);
+    return arr;
   };
-} else {
-  console.log('[SOLNET] crypto.getRandomValues OK');
 }
 
-// ──────────────────────────────────────────────────────
-// Expo Router entry — app/ directory handles all routing.
-// Do NOT import App.js — this project uses expo-router.
-// ──────────────────────────────────────────────────────
+// Now load app
 import 'expo-router/entry';
