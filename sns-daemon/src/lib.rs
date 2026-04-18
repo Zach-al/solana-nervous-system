@@ -347,6 +347,20 @@ pub mod jni_bridge {
         if let Ok(glob) = env.new_global_ref(callback) {
             let _ = LOG_CALLBACK.set(glob);
         }
+        
+        // --- Initialize Tracing Bridge ---
+        static INIT: std::sync::Once = std::sync::Once::new();
+        INIT.call_once(|| {
+            use tracing_subscriber::layer::SubscriberExt;
+            use tracing_subscriber::util::SubscriberInitExt;
+            
+            let subscriber = tracing_subscriber::registry()
+                .with(tracing_subscriber::EnvFilter::new("info"))
+                .with(JniLayer);
+            
+            let _ = subscriber.try_init();
+            push_log_to_java("📡 SOLNET Tracing Bridge Initialized");
+        });
     }
 }
 
@@ -354,6 +368,47 @@ pub mod jni_bridge {
 static JAVA_VM: OnceLock<jni::JavaVM> = OnceLock::new();
 #[cfg(feature = "android-jni")]
 static LOG_CALLBACK: OnceLock<jni::objects::GlobalRef> = OnceLock::new();
+
+/// Custom tracing layer that forwards logs to the Android JNI callback
+struct JniLayer;
+
+impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for JniLayer {
+    fn on_event(&self, event: &tracing::Event<'_>, _ctx: tracing_subscriber::layer::Context<'_, S>) {
+        let mut visitor = JniLogVisitor::default();
+        event.record(&mut visitor);
+        
+        let level = *event.metadata().level();
+        let prefix = match level {
+            tracing::Level::ERROR => "❌ ",
+            tracing::Level::WARN => "⚠️ ",
+            tracing::Level::INFO => "> ",
+            _ => "  ",
+        };
+        
+        if !visitor.message.is_empty() {
+            push_log_to_java(&format!("{}{}", prefix, visitor.message));
+        }
+    }
+}
+
+#[derive(Default)]
+struct JniLogVisitor {
+    message: String,
+}
+
+impl tracing::field::Visit for JniLogVisitor {
+    fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+        if field.name() == "message" {
+            self.message = format!("{:?}", value).replace("\"", "");
+        }
+    }
+    
+    fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
+        if field.name() == "message" {
+            self.message = value.to_string();
+        }
+    }
+}
 
 /// Internal helper to push a log line to the Java UI.
 pub fn push_log_to_java(line: &str) {
@@ -372,6 +427,6 @@ pub fn push_log_to_java(line: &str) {
             }
         }
     }
-    // Also output to stdout for logcat
-    println!("SOLNET_LOG|{}", line);
+    // Also output to stdout for logcat with distinct tagging
+    println!("SOLNET_NATIVE_LOG|{}", line);
 }
