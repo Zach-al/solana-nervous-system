@@ -4,34 +4,69 @@ on:
   release:
     types: [created]
 
+permissions:
+  id-token: write
+  contents: write
+  actions: read
+
 jobs:
   provenance:
     name: Generate SLSA Provenance
     runs-on: ubuntu-latest
-    permissions:
-      id-token: write
-      contents: write
-      actions: read
     steps:
       - uses: actions/checkout@v4
 
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-registry-
+
+      - name: Cache cargo target
+        uses: actions/cache@v4
+        with:
+          path: target
+          key: ${{ runner.os }}-cargo-target-release-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-target-release-
+
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: stable
+
+      - name: Prepare CI-friendly release profile
+        run: |
+          mkdir -p .cargo
+          cat > .cargo/config.toml <<'EOF'
+          [profile.release]
+          opt-level = 2
+          lto = false
+          codegen-units = 16
+          debug = false
+          strip = false
+          overflow-checks = false
+          panic = "abort"
+          EOF
 
       - name: Build daemon (release)
-        run: cd sns-daemon && cargo build --release
+        run: cargo build -p sns-daemon --release --verbose
 
       - name: Compute binary SHA256
         id: hash
         run: |
-          HASH=$(sha256sum sns-daemon/target/release/sns-daemon | awk '{print $1}')
+          HASH=$(sha256sum target/release/sns-daemon | awk '{print $1}')
           echo "binary_hash=${HASH}" >> $GITHUB_OUTPUT
           echo "Binary SHA256: ${HASH}"
 
       - name: Upload binary as release asset
         uses: softprops/action-gh-release@v2
         with:
-          files: sns-daemon/target/release/sns-daemon
+          files: target/release/sns-daemon
 
       - name: Record provenance metadata
         run: |

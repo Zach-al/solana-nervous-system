@@ -1,0 +1,9 @@
+# cargo-audit configuration
+# See: https://docs.rs/cargo-audit/latest/cargo_audit/
+
+[advisories]
+# Advisories to ignore (add RUSTSEC IDs here for known false positives)
+ignore = []
+
+# Severity threshold — fail on any advisory by default
+#severity-threshold = "low"
