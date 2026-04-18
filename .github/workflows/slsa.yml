@@ -64,7 +64,7 @@ jobs:
           echo "Binary SHA256: ${HASH}"
 
       - name: Upload binary as release asset
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: target/release/sns-daemon
 
@@ -79,6 +79,6 @@ jobs:
           cat provenance.txt
 
       - name: Upload provenance
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: provenance.txt
