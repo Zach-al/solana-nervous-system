@@ -1,0 +1,30 @@
+[package]
+name = "sns-native"
+version = "2.1.1"
+edition = "2021"
+authors = ["SOLNET Enterprise"]
+description = "Native JNI/FFI core for SOLNET mobile integration"
+
+[lib]
+name = "solnet_native"
+path = "src/lib.rs"
+crate-type = ["cdylib", "staticlib"]
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+hex = "0.4"
+rand = "0.8"
+ed25519-dalek = { version = "2.1", features = ["rand_core", "serde"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+jni = { version = "0.21", optional = true }
+uuid = { version = "1.5", features = ["v4"] }
+anyhow = "1.0"
+tokio = { version = "1.33.0", features = ["full", "sync", "macros", "rt-multi-thread"] }
+reqwest = { version = "0.11", features = ["json", "rustls-tls"] }
+libp2p = { version = "0.54.1", default-features = false, features = ["noise", "yamux", "tcp", "tokio"] }
+
+[features]
+default = []
+android-jni = ["jni"]

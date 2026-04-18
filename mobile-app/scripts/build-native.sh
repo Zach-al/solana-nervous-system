@@ -26,13 +26,10 @@ rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-and
 
 # 3. Build for Android (using cargo-ndk)
 echo "🤖 Building for Android ABIs..."
-cd ../../sns-daemon
-
-# Remove legacy manual config if exists (cargo-ndk doesn't need it)
-rm -f .cargo/config.toml
+cd ../../sns-native
 
 # Build for major ABIs (API 24+ required for getifaddrs)
-cargo ndk -t arm64-v8a -t armeabi-v7a -t x86_64 -o ../mobile-app/android/app/src/main/jniLibs --platform 24 build --lib --release --features android-jni
+cargo ndk -t arm64-v8a -t armeabi-v7a -t x86_64 -o ../mobile-app/android/app/src/main/jniLibs -p 24 build --lib --release --features android-jni
 
 # 4. Build for iOS
 echo "🍎 Building for iOS..."

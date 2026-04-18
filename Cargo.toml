@@ -1,7 +1,8 @@
 [workspace]
 resolver = "2"
 members = [
-    "sns-daemon"
+    "sns-daemon",
+    "sns-native"
 ]
 
 [profile.release]

@@ -10,6 +10,9 @@
 
 pub mod mobile_governor;
 pub mod relay_client;
+pub mod platform;
+pub mod battery_guard;
+pub mod mobile_peer;
 
 use std::ffi::{CStr, CString};
 use std::os::raw::c_char;

@@ -1,12 +1,12 @@
 {
   "build": {
     "builder": "NIXPACKS",
-    "buildCommand": "cd sns-daemon && CARGO_BUILD_JOBS=2 cargo build --release"
+    "buildCommand": "cd sns-daemon && cargo build --release --bin sns-daemon"
   },
   "deploy": {
-    "startCommand": "chmod +x start.sh && ./start.sh",
+    "startCommand": "./sns-daemon/target/release/sns-daemon",
     "restartPolicyType": "ON_FAILURE", 
-    "restartPolicyMaxRetries": 5,
+    "restartPolicyMaxRetries": 10,
     "healthcheckPath": "/health",
     "healthcheckTimeout": 180
   }

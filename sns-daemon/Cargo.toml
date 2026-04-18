@@ -5,17 +5,13 @@ edition = "2021"
 authors = ["SOLNET Enterprise"]
 description = "Enterprise-grade decentralized RPC mesh daemon"
 
-[lib]
-name = "solnet_native"
-path = "src/lib.rs"
-crate-type = ["cdylib", "staticlib"]
-
 [[bin]]
 name = "sns-daemon"
 path = "src/main.rs"
 required-features = ["binary"]
 
 [dependencies]
+sns-native = { path = "../sns-native" }
 async-trait = "0.1.74"
 anyhow = "1.0.75"
 axum = { version = "0.7.1", features = ["macros"] }
@@ -48,10 +44,8 @@ icu_collections = "=1.5.0"
 icu_locid = "=1.5.0"
 icu_normalizer = "=1.5.0"
 icu_properties = "=1.5.0"
-openssl = { version = "0.10.66", optional = true }
 rustls = "0.23"
 libp2p-connection-limits = "0.6.0"
-jni = { version = "0.21", optional = true }
 
 # Security: explicit feature control
 [dependencies.libp2p]
@@ -73,8 +67,6 @@ features = [
 
 [features]
 default = []
-android-jni = ["jni"]
-ios-static = []
 binary = []
 
 [dev-dependencies]
@@ -85,14 +77,6 @@ name = "latency_bench"
 harness = false
 
 
-
-[package.metadata.mobile]
-targets = [
-    "aarch64-apple-ios",
-    "x86_64-apple-ios",
-    "aarch64-linux-android",
-    "armv7-linux-androideabi"
-]
 
 # Financial counters (earnings_lamports, pending_lamports) must NEVER
 # silently wrap. overflow-checks = true causes a panic (then abort)

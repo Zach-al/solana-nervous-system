@@ -14,13 +14,12 @@ pub mod attack_prevention;
 pub mod wallet_rewards;
 pub mod identity;
 pub mod latency_engine;
-pub mod platform;
-pub mod battery_guard;
-pub mod mobile_peer;
 pub mod peer_guard;
 pub mod telemetry;
-pub mod mobile_governor;
 pub mod consensus;
+
+// Shared modules from sns-native
+pub use sns_native::{platform, battery_guard, mobile_peer, mobile_governor, relay_client};
 
 use anyhow::Result;
 use chrono::Utc;
@@ -58,14 +57,12 @@ async fn main() -> Result<()> {
     use std::io::Write;
     let cfg = config::Config::from_env();
     
-    eprintln!("\n\n");
-    eprintln!("#########################################################");
-    eprintln!("## [SOLNET-V2.1.2-PRODUCTION] INITIALIZING...         ##");
-    eprintln!("#########################################################");
-    eprintln!("[SOLNET] System Parameters Loading...");
-    eprintln!("[SOLNET] ENV PORT detected: {:?}", std::env::var("PORT"));
-    eprintln!("[SOLNET] Resolved HTTP Port: {}", cfg.http_port);
-    eprintln!("[SOLNET] STAGE 1: ENVIRONMENT VALIDATION COMPLETE");
+    // ── Pre-flight Logic (For Railway Debugging) ───────────
+    let env_port = std::env::var("PORT").unwrap_or_else(|_| "not set".to_string());
+    eprintln!("🚀 Starting SOLNET-V2.1 daemon...");
+    eprintln!("[PRE-FLIGHT] PORT env detected: {}", env_port);
+    eprintln!("[PRE-FLIGHT] Resolved port: {}", cfg.http_port);
+    eprintln!("✅ Environment validation complete.");
     std::io::stderr().flush().ok();
 
     // Initialize tracing subscriber with env-filter
@@ -284,36 +281,26 @@ async fn main() -> Result<()> {
         // Task 3: Railway Port Binding
         // Railway docs: "Your web server should bind to 0.0.0.0"
         // https://docs.railway.com/guides/fixing-common-errors
+        // Bind to 0.0.0.0 (required for Railway)
         let bind_addr = format!("0.0.0.0:{}", cfg_for_rpc.http_port);
-        eprintln!("[DIAG] SOLNET STAGE 2.1: BINDING TO TCP {}...", bind_addr);
-        std::io::stderr().flush().ok();
+        tracing::info!("🚀 SOLNET daemon binding to {}", bind_addr);
+        eprintln!("[BIND] Binding to {}...", bind_addr);
 
         let listener = match tokio::net::TcpListener::bind(&bind_addr).await {
             Ok(l) => {
-                eprintln!("[DIAG] SOLNET STAGE 2.2: BIND SUCCESS ON {}", bind_addr);
+                let local_addr = l.local_addr().unwrap();
+                tracing::info!("✅ Listening on http://{}", local_addr);
+                eprintln!("[SUCCESS] Active on http://{}", local_addr);
                 l
             },
             Err(e) => {
-                eprintln!("[DIAG] SOLNET FATAL: FAILED TO BIND TO {}: {}", bind_addr, e);
+                tracing::error!("❌ FATAL: Failed to bind to {}: {}", bind_addr, e);
+                eprintln!("[FATAL] Bind failure: {}", e);
                 std::process::exit(1);
             }
         };
 
-        tracing::info!(
-            "╔══════════════════════════════════╗"
-        );
-        tracing::info!(
-            "║  SOLNET daemon bound to {:<10} ║",
-            bind_addr
-        );
-        tracing::info!(
-            "╚══════════════════════════════════╝"
-        );
-
-        eprintln!("[SOLNET] STAGE 3: AXUM SERVER STARTING...");
-        let local_addr = listener.local_addr().unwrap();
-        tracing::info!("AXUM server listening on http://{}", local_addr);
-        eprintln!("[DIAG] SERVER_URL: http://{}", local_addr);
+        std::io::stderr().flush().ok();
         std::io::stderr().flush().ok();
 
         axum::serve(listener, app)
