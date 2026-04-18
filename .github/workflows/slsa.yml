@@ -49,7 +49,7 @@ jobs:
           codegen-units = 16
           debug = false
           strip = false
-          overflow-checks = false
+          overflow-checks = true
           panic = "abort"
           EOF
 

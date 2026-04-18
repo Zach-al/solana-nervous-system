@@ -7,7 +7,6 @@
 /// ThrottleState::FullPower  — Charging + WiFi (50 conns, 10s heartbeat)
 /// ThrottleState::Conserve   — Charging XOR WiFi (10 conns, 60s heartbeat)
 /// ThrottleState::Standby    — Unplugged + Cellular (2 conns, 300s heartbeat)
-
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, Ordering};
 
@@ -48,7 +47,7 @@ impl ThrottleState {
     }
 
     /// Parse from the string names sent by the React Native bridge.
-    pub fn from_str(s: &str) -> Self {
+    pub fn parse(s: &str) -> Self {
         match s {
             "FULL_POWER" => ThrottleState::FullPower,
             "CONSERVE"   => ThrottleState::Conserve,
@@ -168,9 +167,9 @@ mod tests {
 
     #[test]
     fn parse_from_str() {
-        assert_eq!(ThrottleState::from_str("FULL_POWER"), ThrottleState::FullPower);
-        assert_eq!(ThrottleState::from_str("CONSERVE"), ThrottleState::Conserve);
-        assert_eq!(ThrottleState::from_str("STANDBY"), ThrottleState::Standby);
-        assert_eq!(ThrottleState::from_str("GARBAGE"), ThrottleState::Standby);
+        assert_eq!(ThrottleState::parse("FULL_POWER"), ThrottleState::FullPower);
+        assert_eq!(ThrottleState::parse("CONSERVE"), ThrottleState::Conserve);
+        assert_eq!(ThrottleState::parse("STANDBY"), ThrottleState::Standby);
+        assert_eq!(ThrottleState::parse("GARBAGE"), ThrottleState::Standby);
     }
 }

@@ -1,6 +1,5 @@
 /// Mesh sharding — each node specializes in a traffic type
 /// Routing is deterministic based on method classification
-
 use std::collections::HashMap;
 use serde;
 

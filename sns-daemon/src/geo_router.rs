@@ -1,5 +1,4 @@
 /// Geographic edge routing — route requests to nearest node by latency
-
 use dashmap::DashMap;
 use std::sync::Arc;
 use serde;

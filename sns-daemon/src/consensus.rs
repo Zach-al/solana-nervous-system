@@ -30,7 +30,6 @@
 /// Replace hardcoded/DHT-discovered node set with on-chain governance.
 /// See: sns-program/src/lib.rs register_node instruction.
 /// ──────────────────────────────────────────────────────────────────────
-
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;

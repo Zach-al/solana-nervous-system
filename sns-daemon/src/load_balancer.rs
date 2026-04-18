@@ -1,5 +1,4 @@
 /// Dynamic load balancer with multiple strategies
-
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use tokio::sync::RwLock;

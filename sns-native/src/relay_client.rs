@@ -10,7 +10,6 @@
 ///   5. Returns stats to JS layer via FFI
 ///
 /// No port binding, no libp2p, no Axum — battery-respectful mobile architecture.
-
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::OnceLock;
 use tokio::runtime::Runtime;

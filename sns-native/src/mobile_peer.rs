@@ -3,7 +3,6 @@
 /// Bootstrap assigns them to nearest desktop node
 /// Mobile node then routes all requests through
 /// that assigned desktop node
-
 use std::time::Duration;
 
 const BOOTSTRAP_NODES: &[&str] = &[

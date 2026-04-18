@@ -1,7 +1,6 @@
 /// Battery-aware throttling for mobile nodes
 /// Reduces workload when battery is low
 /// iOS and Android nodes should never drain battery
-
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 
@@ -58,7 +57,7 @@ impl BatteryGuard {
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
                 .as_secs();
-            return count % 2 == 0;
+            return count.is_multiple_of(2);
         }
 
         self.throttled.store(false, Ordering::Relaxed);

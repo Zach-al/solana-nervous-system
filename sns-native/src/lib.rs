@@ -7,7 +7,6 @@
 /// - Hardware-backed session authentication (Keystore/Keychain).
 /// - Constant-time token comparison for all protected operations.
 /// - Memory safety: Caller MUST call solnet_free_string() for all *mut c_char returns.
-
 pub mod mobile_governor;
 pub mod relay_client;
 pub mod platform;
@@ -36,7 +35,9 @@ fn governor() -> &'static MobileGovernor {
 
 // ── Helper: Authentication ────────────────────────────────────────────────────
 
-fn check_auth(token: *const u8, len: usize) -> bool {
+/// # Safety
+/// `token` must point to a valid buffer of at least `len` bytes.
+unsafe fn check_auth(token: *const u8, len: usize) -> bool {
     if token.is_null() || len != 32 {
         return false;
     }
@@ -57,8 +58,10 @@ fn check_auth(token: *const u8, len: usize) -> bool {
 
 /// Generate Ed25519 keypair. Returns JSON string: {"publicKey": "...", "secretKey": "..."}
 /// Requires session token authentication.
+/// # Safety
+/// `token` must point to a valid buffer of at least `token_len` bytes.
 #[no_mangle]
-pub extern "C" fn solnet_generate_keypair(token: *const u8, token_len: usize) -> *mut c_char {
+pub unsafe extern "C" fn solnet_generate_keypair(token: *const u8, token_len: usize) -> *mut c_char {
     if !check_auth(token, token_len) {
         return std::ptr::null_mut();
     }
@@ -80,8 +83,11 @@ pub extern "C" fn solnet_generate_keypair(token: *const u8, token_len: usize) ->
 
 /// Sign message using Ed25519. Returns hex signature string.
 /// Requires session token authentication.
+/// # Safety
+/// All pointer arguments must be valid. `secret_key_hex` and `message` must be
+/// valid null-terminated C strings. `token` must point to `token_len` bytes.
 #[no_mangle]
-pub extern "C" fn solnet_sign_transaction(
+pub unsafe extern "C" fn solnet_sign_transaction(
     secret_key_hex: *const c_char,
     message: *const c_char,
     token: *const u8,
@@ -133,8 +139,10 @@ pub extern "C" fn solnet_get_random_bytes(length: usize) -> *mut c_char {
 
 // ── FFI: Lifecycle & Governor ────────────────────────────────────────────────
 
+/// # Safety
+/// `token` must point to a valid buffer of at least `len` bytes.
 #[no_mangle]
-pub extern "C" fn solnet_init_governor(token: *const u8, len: usize) -> bool {
+pub unsafe extern "C" fn solnet_init_governor(token: *const u8, len: usize) -> bool {
     if token.is_null() || len != 32 {
         return false;
     }
@@ -144,8 +152,10 @@ pub extern "C" fn solnet_init_governor(token: *const u8, len: usize) -> bool {
     GOVERNOR_TOKEN.set(arr).is_ok()
 }
 
+/// # Safety
+/// `token` must point to a valid buffer of at least `token_len` bytes.
 #[no_mangle]
-pub extern "C" fn solnet_set_throttle_state(state: u8, token: *const u8, token_len: usize) -> bool {
+pub unsafe extern "C" fn solnet_set_throttle_state(state: u8, token: *const u8, token_len: usize) -> bool {
     if !check_auth(token, token_len) {
         return false;
     }
@@ -162,8 +172,11 @@ pub extern "C" fn solnet_get_throttle_state() -> u8 {
     GOVERNOR_STATE.load(Ordering::SeqCst)
 }
 
+/// # Safety
+/// `config_json` must be a valid null-terminated C string.
+/// `token` must point to a valid buffer of at least `token_len` bytes.
 #[no_mangle]
-pub extern "C" fn solnet_start_relay(config_json: *const c_char, token: *const u8, token_len: usize) -> bool {
+pub unsafe extern "C" fn solnet_start_relay(config_json: *const c_char, token: *const u8, token_len: usize) -> bool {
     if !check_auth(token, token_len) || config_json.is_null() {
         return false;
     }
@@ -187,8 +200,10 @@ pub extern "C" fn solnet_start_relay(config_json: *const c_char, token: *const u
     }
 }
 
+/// # Safety
+/// `token` must point to a valid buffer of at least `token_len` bytes.
 #[no_mangle]
-pub extern "C" fn solnet_stop_relay(token: *const u8, token_len: usize) -> bool {
+pub unsafe extern "C" fn solnet_stop_relay(token: *const u8, token_len: usize) -> bool {
     if !check_auth(token, token_len) {
         return false;
     }
@@ -204,8 +219,11 @@ pub extern "C" fn solnet_get_daemon_stats() -> *mut c_char {
         .unwrap_or(std::ptr::null_mut())
 }
 
+/// # Safety
+/// `ptr` must have been obtained from a previous call to a `solnet_*` function
+/// that returned a `*mut c_char`. Double-free is undefined behavior.
 #[no_mangle]
-pub extern "C" fn solnet_free_string(ptr: *mut c_char) {
+pub unsafe extern "C" fn solnet_free_string(ptr: *mut c_char) {
     if !ptr.is_null() {
         unsafe { drop(CString::from_raw(ptr)); }
     }
@@ -230,7 +248,7 @@ pub mod jni_bridge {
             Ok(b) => b,
             Err(_) => return JNI_FALSE,
         };
-        if solnet_init_governor(bytes.as_ptr(), bytes.len()) { JNI_TRUE } else { JNI_FALSE }
+        if unsafe { solnet_init_governor(bytes.as_ptr(), bytes.len()) } { JNI_TRUE } else { JNI_FALSE }
     }
 
     #[no_mangle]
@@ -242,7 +260,7 @@ pub mod jni_bridge {
         let ptr = solnet_get_random_bytes(length as usize);
         let res = unsafe { CStr::from_ptr(ptr) }.to_str().unwrap_or("error");
         let output = env.new_string(res).unwrap().into_raw();
-        solnet_free_string(ptr);
+        unsafe { solnet_free_string(ptr) };
         output
     }
 
@@ -256,11 +274,11 @@ pub mod jni_bridge {
             Ok(b) => b,
             Err(_) => return std::ptr::null_mut(),
         };
-        let ptr = solnet_generate_keypair(auth.as_ptr(), auth.len());
+        let ptr = unsafe { solnet_generate_keypair(auth.as_ptr(), auth.len()) };
         if ptr.is_null() { return std::ptr::null_mut(); }
         let res = unsafe { CStr::from_ptr(ptr) }.to_str().unwrap_or("error");
         let output = env.new_string(res).unwrap().into_raw();
-        solnet_free_string(ptr);
+        unsafe { solnet_free_string(ptr) };
         output
     }
 
@@ -279,11 +297,11 @@ pub mod jni_bridge {
         let c_sk = CString::new(sk).unwrap();
         let c_msg = CString::new(msg).unwrap();
         
-        let ptr = solnet_sign_transaction(c_sk.as_ptr(), c_msg.as_ptr(), auth.as_ptr(), auth.len());
+        let ptr = unsafe { solnet_sign_transaction(c_sk.as_ptr(), c_msg.as_ptr(), auth.as_ptr(), auth.len()) };
         if ptr.is_null() { return std::ptr::null_mut(); }
         let res = unsafe { CStr::from_ptr(ptr) }.to_str().unwrap_or("error");
         let output = env.new_string(res).unwrap().into_raw();
-        solnet_free_string(ptr);
+        unsafe { solnet_free_string(ptr) };
         output
     }
 
@@ -297,7 +315,7 @@ pub mod jni_bridge {
         let json: String = env.get_string(&config_json).unwrap().into();
         let auth = env.convert_byte_array(&token).unwrap();
         let c_json = CString::new(json).unwrap();
-        if solnet_start_relay(c_json.as_ptr(), auth.as_ptr(), auth.len()) { JNI_TRUE } else { JNI_FALSE }
+        if unsafe { solnet_start_relay(c_json.as_ptr(), auth.as_ptr(), auth.len()) } { JNI_TRUE } else { JNI_FALSE }
     }
 
     #[no_mangle]
@@ -307,7 +325,7 @@ pub mod jni_bridge {
         token: JByteArray<'local>,
     ) -> jboolean {
         let auth = env.convert_byte_array(&token).unwrap();
-        if solnet_stop_relay(auth.as_ptr(), auth.len()) { JNI_TRUE } else { JNI_FALSE }
+        if unsafe { solnet_stop_relay(auth.as_ptr(), auth.len()) } { JNI_TRUE } else { JNI_FALSE }
     }
 
     #[no_mangle]
@@ -327,7 +345,7 @@ pub mod jni_bridge {
         token: JByteArray<'local>,
     ) -> jboolean {
         let auth = env.convert_byte_array(&token).unwrap();
-        if solnet_set_throttle_state(state as u8, auth.as_ptr(), auth.len()) { JNI_TRUE } else { JNI_FALSE }
+        if unsafe { solnet_set_throttle_state(state as u8, auth.as_ptr(), auth.len()) } { JNI_TRUE } else { JNI_FALSE }
     }
 
     #[no_mangle]
@@ -373,8 +391,10 @@ static JAVA_VM: OnceLock<jni::JavaVM> = OnceLock::new();
 static LOG_CALLBACK: OnceLock<jni::objects::GlobalRef> = OnceLock::new();
 
 /// Custom tracing layer that forwards logs to the Android JNI callback
+#[cfg(feature = "android-jni")]
 struct JniLayer;
 
+#[cfg(feature = "android-jni")]
 impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for JniLayer {
     fn on_event(&self, event: &tracing::Event<'_>, _ctx: tracing_subscriber::layer::Context<'_, S>) {
         let mut visitor = JniLogVisitor::default();
@@ -394,11 +414,13 @@ impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for JniLayer {
     }
 }
 
+#[cfg(feature = "android-jni")]
 #[derive(Default)]
 struct JniLogVisitor {
     message: String,
 }
 
+#[cfg(feature = "android-jni")]
 impl tracing::field::Visit for JniLogVisitor {
     fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
         if field.name() == "message" {
