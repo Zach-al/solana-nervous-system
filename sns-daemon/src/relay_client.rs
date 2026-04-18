@@ -241,6 +241,8 @@ async fn relay_loop(config: RelayConfig, mut rx: mpsc::Receiver<RelayRequest>) {
         .tcp_keepalive(std::time::Duration::from_secs(30))
         .tcp_nodelay(true)
         .user_agent("SOLNET-Mobile/2.1.2")
+        .use_rustls_tls()           // explicit rustls — never falls back to OpenSSL
+        .https_only(true)           // enforce HTTPS at the client level too
         .build()
     {
         Ok(c) => c,
