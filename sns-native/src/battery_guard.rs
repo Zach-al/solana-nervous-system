@@ -57,7 +57,8 @@ impl BatteryGuard {
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
                 .as_secs();
-            return count.is_multiple_of(2);
+            #[allow(clippy::manual_is_multiple_of)]
+            return count % 2 == 0;
         }
 
         self.throttled.store(false, Ordering::Relaxed);
