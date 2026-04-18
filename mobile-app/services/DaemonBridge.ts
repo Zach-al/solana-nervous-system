@@ -10,6 +10,10 @@
  *     A missing module in production = build configuration error → hard throw.
  *   - In development (Expo Go), runs in stub mode with explicit warnings.
  *   - Stub stats include `isStub: true` so the UI can show a "DEMO MODE" banner.
+ *
+ * ARCHITECTURE:
+ *   The mobile node is a RELAY CLIENT, not a daemon. It forwards RPC calls
+ *   to the Railway server via HTTPS and tracks earnings atomically.
  */
 
 import { NativeModules, NativeEventEmitter, Platform, EmitterSubscription } from 'react-native';
@@ -18,11 +22,26 @@ import { NativeModules, NativeEventEmitter, Platform, EmitterSubscription } from
 
 export type ThrottleState = 'FULL_POWER' | 'CONSERVE' | 'STANDBY';
 
+export interface RelayConfig {
+  /** Railway RPC node URL — MUST be https:// */
+  relay_url: string;
+  /** Node operator's Solana wallet pubkey (base58) */
+  wallet_pubkey: string;
+  /** Optional node display name */
+  node_name?: string;
+  /** Max concurrent in-flight requests (1-8, default 4) */
+  max_concurrent?: number;
+  /** Lamports earned per forwarded request (default 100) */
+  lamports_per_request?: number;
+}
+
 export interface DaemonStats {
   requests_served: number;
-  connections: number;
-  uptime_secs: number;
-  throttle_state: ThrottleState;
+  earnings_lamports: number;
+  uptime_seconds: number;
+  governor_state: number;
+  is_running: boolean;
+  peer_count: number;
   /** True when the native module is absent and stats are simulated. */
   isStub: boolean;
 }
@@ -33,7 +52,9 @@ interface SolnetDaemonNative {
   setThrottleState(state: ThrottleState): Promise<void>;
   startDaemon(): Promise<void>;
   stopDaemon(): Promise<void>;
-  getDaemonStats(): Promise<Omit<DaemonStats, 'isStub'>>;
+  getDaemonStats(): Promise<Record<string, any>>;
+  startRelay(configJson: string): Promise<{ ok: boolean; mode?: string }>;
+  stopRelay(): Promise<{ ok: boolean }>;
 }
 
 // ─── Module Resolution ───────────────────────────────────────────────────────
@@ -73,6 +94,18 @@ const emitter = !IS_STUB
   ? new NativeEventEmitter(_NativeModule as any)
   : null;
 
+// ─── Stub stats (returned when native module is absent) ──────────────────────
+
+const STUB_STATS: DaemonStats = {
+  requests_served: 0,
+  earnings_lamports: 0,
+  uptime_seconds: 0,
+  governor_state: 0,
+  is_running: false,
+  peer_count: 0,
+  isStub: true,
+};
+
 // ─── Public API ──────────────────────────────────────────────────────────────
 
 export const DaemonBridge = {
@@ -81,6 +114,32 @@ export const DaemonBridge = {
 
   /** True when running without the native module (Expo Go / dev). */
   isStub: IS_STUB,
+
+  /**
+   * Start the mobile relay client.
+   * Validates config before crossing the native boundary.
+   */
+  async start(config: RelayConfig): Promise<{ ok: boolean; mode?: string; isStub: boolean }> {
+    if (IS_STUB) return { ok: false, isStub: true };
+
+    // Client-side validation before crossing native boundary
+    if (!config.relay_url.startsWith('https://')) {
+      throw new Error('relay_url must use HTTPS');
+    }
+    if (!config.wallet_pubkey || config.wallet_pubkey.length < 32) {
+      throw new Error('wallet_pubkey required (min 32 chars)');
+    }
+
+    const result = await _NativeModule!.startRelay(JSON.stringify(config));
+    return { ...result, isStub: false };
+  },
+
+  /** Stop the mobile relay. Drains in-flight requests gracefully. */
+  async stop(): Promise<{ ok: boolean; isStub: boolean }> {
+    if (IS_STUB) return { ok: true, isStub: true };
+    const result = await _NativeModule!.stopRelay();
+    return { ...result, isStub: false };
+  },
 
   /**
    * Tell the Rust daemon which power mode to operate in.
@@ -92,35 +151,26 @@ export const DaemonBridge = {
     return _NativeModule!.setThrottleState(state);
   },
 
-  /** Start the Rust daemon in a background thread. */
-  async start(): Promise<void> {
-    if (IS_STUB) return;
-    return _NativeModule!.startDaemon();
-  },
-
-  /** Gracefully stop the Rust daemon. */
-  async stop(): Promise<void> {
-    if (IS_STUB) return;
-    return _NativeModule!.stopDaemon();
-  },
-
   /**
-   * Fetch runtime stats from the Rust daemon.
+   * Fetch runtime stats from the Rust relay client.
    * Returns stub stats with `isStub: true` when the module is unavailable.
    * Callers should check `isStub` and show a "DEMO MODE" indicator.
    */
   async getStats(): Promise<DaemonStats> {
-    if (IS_STUB) {
-      return {
-        requests_served: 0,
-        connections: 0,
-        uptime_secs: 0,
-        throttle_state: 'STANDBY',
-        isStub: true,
-      };
-    }
+    if (IS_STUB) return STUB_STATS;
+
     const raw = await _NativeModule!.getDaemonStats();
-    return { ...raw, isStub: false };
+    // Android returns a WritableMap, iOS returns a dictionary
+    // Both should have the same keys from relay_client::get_stats_json()
+    return {
+      requests_served: raw.requests_served ?? 0,
+      earnings_lamports: raw.earnings_lamports ?? 0,
+      uptime_seconds: raw.uptime_seconds ?? raw.uptime_secs ?? 0,
+      governor_state: raw.governor_state ?? 0,
+      is_running: raw.is_running ?? false,
+      peer_count: raw.peer_count ?? 0,
+      isStub: false,
+    };
   },
 
   /**

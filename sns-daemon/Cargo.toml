@@ -50,6 +50,7 @@ icu_properties = "=1.5.0"
 openssl = { version = "0.10.66", optional = true }
 rustls = "0.23"
 libp2p-connection-limits = "0.6.0"
+jni = { version = "0.21", optional = true }
 
 # Security: explicit feature control
 [dependencies.libp2p]
@@ -70,7 +71,9 @@ features = [
 ]
 
 [features]
-# Cleaned up features
+default = []
+android-jni = ["jni"]
+ios-static = []
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }

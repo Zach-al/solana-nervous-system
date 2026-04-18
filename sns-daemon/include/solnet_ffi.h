@@ -17,6 +17,10 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /**
  * Initialise the governor with a 32-byte session token.
  * Must be called once before any authenticated throttle calls.
@@ -51,18 +55,41 @@ bool rust_set_throttle_state_authenticated(
 void rust_set_throttle_state(const char* state);
 
 /**
- * Start the Rust daemon in a background thread.
+ * Start the Rust daemon in a background thread (legacy).
  * Idempotent — safe to call multiple times.
  */
 void rust_start_daemon(void);
 
 /**
- * Gracefully stop the Rust daemon.
+ * Gracefully stop the Rust daemon (legacy).
  */
 void rust_stop_daemon(void);
 
 /**
- * Get current daemon stats as a JSON C string.
+ * Start the mobile relay client.
+ *
+ * config_json: UTF-8 JSON, null-terminated. Required fields:
+ *   { "relay_url": "https://...", "wallet_pubkey": "base58..." }
+ * Optional: "node_name", "max_concurrent" (1-8), "lamports_per_request"
+ *
+ * relay_url MUST be HTTPS — returns false otherwise.
+ * THREAD SAFE. Idempotent — safe to call multiple times.
+ *
+ * @param config_json  UTF-8 JSON configuration string.
+ * @return             true on success, false on config error or init failure.
+ */
+bool rust_start_relay(const char* config_json);
+
+/**
+ * Stop the mobile relay. Drains in-flight requests (up to 500ms).
+ * THREAD SAFE. Idempotent.
+ *
+ * @return  true always (idempotent).
+ */
+bool rust_stop_relay(void);
+
+/**
+ * Get current daemon/relay stats as a JSON C string.
  *
  * CALLER MUST FREE the returned pointer using rust_free_string().
  * Returns NULL on error.
@@ -77,3 +104,7 @@ char* rust_get_daemon_stats(void);
  * SET YOUR POINTER TO NULL after calling this.
  */
 void rust_free_string(char* ptr);
+
+#ifdef __cplusplus
+}
+#endif

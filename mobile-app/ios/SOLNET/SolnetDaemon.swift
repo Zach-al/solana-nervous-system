@@ -157,6 +157,49 @@ class SolnetDaemon: RCTEventEmitter {
     resolve(dict)
   }
 
+  // MARK: — Relay lifecycle
+
+  @objc func startRelay(
+      _ configJson: String,
+      resolver resolve: @escaping RCTPromiseResolveBlock,
+      rejecter reject: @escaping RCTPromiseRejectBlock
+  ) {
+      // Validate HTTPS before calling into Rust
+      guard configJson.contains("https://") else {
+          reject("INVALID_CONFIG", "relay_url must use HTTPS", nil)
+          return
+      }
+
+      // Ensure governor is initialized (idempotent)
+      initializeGovernor()
+
+      // Call Rust on a background thread — never block the JS thread
+      DispatchQueue.global(qos: .utility).async {
+          guard let cStr = configJson.cString(using: .utf8) else {
+              DispatchQueue.main.async {
+                  reject("INVALID_CONFIG", "Config not valid UTF-8", nil)
+              }
+              return
+          }
+          let result = rust_start_relay(cStr)
+          DispatchQueue.main.async {
+              if result {
+                  resolve(["ok": true, "mode": "relay"])
+              } else {
+                  reject("START_FAILED", "rust_start_relay returned false", nil)
+              }
+          }
+      }
+  }
+
+  @objc func stopRelay(
+      _ resolve: @escaping RCTPromiseResolveBlock,
+      rejecter reject: @escaping RCTPromiseRejectBlock
+  ) {
+      let result = rust_stop_relay()
+      resolve(["ok": result])
+  }
+
   // MARK: — Keychain helpers
 
   private func saveToKeychain(key: String, value: Data) {

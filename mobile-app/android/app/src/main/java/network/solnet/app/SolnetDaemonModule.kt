@@ -229,4 +229,55 @@ class SolnetDaemonModule(private val reactContext: ReactApplicationContext) :
     private external fun rustStartDaemon()
     private external fun rustStopDaemon()
     private external fun rustGetDaemonStats(): String?
+    private external fun rustStartRelay(configJson: String): Boolean
+    private external fun rustStopRelay(): Boolean
+
+    // ── Relay lifecycle ─────────────────────────────────────────────────────
+
+    @ReactMethod
+    fun startRelay(configJson: String, promise: Promise) {
+        // Validate HTTPS before crossing JNI boundary
+        if (!configJson.contains("https://")) {
+            promise.reject("INVALID_CONFIG", "relay_url must use HTTPS")
+            return
+        }
+        // JNI calls must be on a worker thread — never the JS/UI thread
+        Thread {
+            try {
+                val result = rustStartRelay(configJson)
+                promise.resolve(
+                    Arguments.createMap().apply {
+                        putBoolean("ok", result)
+                        putString("mode", "relay")
+                    }
+                )
+            } catch (e: UnsatisfiedLinkError) {
+                promise.resolve(
+                    Arguments.createMap().apply {
+                        putBoolean("ok", false)
+                        putBoolean("isStub", true)
+                    }
+                )
+            }
+        }.start()
+    }
+
+    @ReactMethod
+    fun stopRelay(promise: Promise) {
+        try {
+            val result = rustStopRelay()
+            promise.resolve(
+                Arguments.createMap().apply {
+                    putBoolean("ok", result)
+                }
+            )
+        } catch (e: UnsatisfiedLinkError) {
+            promise.resolve(
+                Arguments.createMap().apply {
+                    putBoolean("ok", true)
+                    putBoolean("isStub", true)
+                }
+            )
+        }
+    }
 }

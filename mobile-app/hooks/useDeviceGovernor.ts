@@ -13,6 +13,7 @@
 import { useEffect, useRef, useState } from 'react';
 import * as Battery from 'expo-battery';
 import * as Network from 'expo-network';
+import { DaemonBridge } from '../services/DaemonBridge';
 
 export type ThrottleState = 'FULL_POWER' | 'CONSERVE' | 'STANDBY';
 
@@ -107,5 +108,14 @@ export function useDeviceGovernor(): DeviceGovernorState {
     };
   }, []);
 
+  // ── Sync throttle state to Rust governor via native bridge ─────────
+  useEffect(() => {
+    if (!state.isReady) return;
+
+    // Fire-and-forget — governor sync is best-effort
+    DaemonBridge.setThrottleState(state.throttleState).catch(() => {});
+  }, [state.throttleState, state.isReady]);
+
   return state;
 }
+

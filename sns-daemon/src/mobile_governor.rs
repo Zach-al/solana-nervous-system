@@ -11,6 +11,23 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, Ordering};
 
+// ─── Global FFI-accessible state ─────────────────────────────────────────────
+// relay_client.rs reads this via current_state() without needing the
+// MobileGovernor instance. Updated whenever set_state() is called.
+
+static GLOBAL_GOVERNOR_STATE: AtomicU8 = AtomicU8::new(ThrottleState::Standby as u8);
+
+/// Read the current governor state as a u8 (0=FullPower, 1=Conserve, 2=Standby).
+/// Thread safe — used by relay_client::get_stats_json().
+pub fn current_state() -> u8 {
+    GLOBAL_GOVERNOR_STATE.load(Ordering::Acquire)
+}
+
+/// Update the global governor state. Called from lib.rs FFI handlers.
+pub fn update_global_state(state: u8) {
+    GLOBAL_GOVERNOR_STATE.store(state, Ordering::Release);
+}
+
 // ─── ThrottleState ────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -34,3 +34,14 @@ RCT_EXTERN_METHOD(
   getDaemonStats:(RCTPromiseResolveBlock)resolve
   reject:(RCTPromiseRejectBlock)reject
 )
+
+RCT_EXTERN_METHOD(
+  startRelay:(NSString *)configJson
+  resolver:(RCTPromiseResolveBlock)resolve
+  rejecter:(RCTPromiseRejectBlock)reject
+)
+
+RCT_EXTERN_METHOD(
+  stopRelay:(RCTPromiseResolveBlock)resolve
+  rejecter:(RCTPromiseRejectBlock)reject
+)
