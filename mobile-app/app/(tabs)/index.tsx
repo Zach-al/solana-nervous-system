@@ -15,6 +15,7 @@ import { useEarningsStore } from '../../stores/earningsStore';
 import { useWallet } from '../../hooks/useWallet';
 import { useRouter } from 'expo-router';
 import { Colors, Radius, Spacing, Typography } from '../../constants/antigravity';
+import { CONFIG } from '../../constants/theme';
 import { useDeviceGovernor } from '../../hooks/useDeviceGovernor';
 import { useLocalNodeStats } from '../../hooks/useLocalNodeStats';
 import { DaemonBridge } from '../../services/DaemonBridge';
@@ -45,20 +46,39 @@ export default function DashboardScreen() {
   const router = useRouter();
   const { isActive, nodeId, requestsServed, uptimeSeconds, setActive } = useNodeStore();
   const { todayLamports, lifetimeLamports } = useEarningsStore();
-  const { truncatedAddress } = useWallet();
+  const { address, truncatedAddress } = useWallet();
   const deviceState = useDeviceGovernor();
 
   // Refresh stats (Server + Local Native Engine)
   useNodeStatus();
   useLocalNodeStats();
 
-  // ── Sync throttle state to Rust daemon whenever device state changes ──
   useEffect(() => {
     if (!deviceState.isReady) return;
     DaemonBridge.setThrottleState(deviceState.throttleState).catch((err) =>
       console.warn('[DaemonBridge] setThrottleState failed:', err)
     );
   }, [deviceState.throttleState, deviceState.isReady]);
+
+  // ── Native Relay Activation ──
+  useEffect(() => {
+    // Only attempt to start if we have a wallet address and not in stub mode (if strict check desired)
+    // However, DaemonBridge handles IS_STUB internally by returning { ok: false, isStub: true }
+    if (!address) return;
+
+    if (isActive) {
+      DaemonBridge.start({
+        relay_url: CONFIG.SOLNET_API_URL,
+        wallet_pubkey: address,
+      }).catch((err) => {
+        console.error('[DaemonBridge] Activation failed:', err);
+      });
+    } else {
+      DaemonBridge.stop().catch((err) => {
+        console.error('[DaemonBridge] Deactivation failed:', err);
+      });
+    }
+  }, [isActive, address]);
 
   const formatUptime = (seconds: number) => {
     const h = Math.floor(seconds / 3600);
