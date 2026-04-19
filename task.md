@@ -1,0 +1,5 @@
+- [/] Phase 15: Zero-Crash Hardening
+    - [ ] HARDEN: `useDeviceGovernor.ts` (Dynamic module loading)
+    - [ ] FIX: `MainActivity.kt` (Resolve initialization race)
+    - [ ] VERIFY: Clean boot on Android/iOS
+- [ ] Execution: `npx expo start --clear`
