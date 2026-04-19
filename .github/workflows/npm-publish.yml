@@ -30,7 +30,35 @@ jobs:
       - name: Run tests
         run: cd sdk && npm test
 
+      - name: Set package version from tag
+        run: |
+          cd sdk
+          echo "Setting package.json version to ${GITHUB_REF_NAME}"
+          npm version "${GITHUB_REF_NAME}" --no-git-tag-version
+        env:
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+
+      - name: Check version on npm
+        id: check_version
+        run: |
+          cd sdk
+          VERSION=$(node -p "require('./package.json').version")
+          echo "Resolved version: $VERSION"
+          # If npm view exits 0 the version exists; otherwise it does not
+          if npm view solnet-sdk@"$VERSION" >/dev/null 2>&1; then
+            echo "version_exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "version_exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Publish with provenance
+        if: steps.check_version.outputs.version_exists == 'false'
         run: cd sdk && npm publish --provenance --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Skip publish because version already exists
+        if: steps.check_version.outputs.version_exists == 'true'
+        run: |
+          cd sdk
+          echo "::notice title=NPM Publish Skipped::Version $(node -p "require('./package.json').version") already exists on npm. Skipping to avoid 403 error."

@@ -1,6 +1,6 @@
 {
   "name": "solnet-sdk",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "description": "High-availability decentralized RPC infrastructure for Solana. Resilient, verified, and community-owned edge routing protocol.",
   "main": "dist/index.js",
   "module": "dist/index.esm.js",
