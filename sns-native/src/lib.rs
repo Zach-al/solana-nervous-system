@@ -12,6 +12,7 @@ pub mod relay_client;
 pub mod platform;
 pub mod battery_guard;
 pub mod mobile_peer;
+pub mod p2p_node;
 
 use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
@@ -219,6 +220,34 @@ pub extern "C" fn solnet_get_daemon_stats() -> *mut c_char {
         .unwrap_or(std::ptr::null_mut())
 }
 
+#[no_mangle]
+pub unsafe extern "C" fn solnet_init_p2p_node(enable_mdns: bool, token: *const u8, token_len: usize) -> *mut c_char {
+    if !check_auth(token, token_len) { return std::ptr::null_mut(); }
+    match p2p_node::init_node(enable_mdns) {
+        Ok(peer_id) => {
+            let res = serde_json::json!({"status": "running", "peer_id": peer_id});
+            CString::new(res.to_string()).unwrap().into_raw()
+        }
+        Err(e) => {
+            let res = serde_json::json!({"status": "error", "message": e});
+            CString::new(res.to_string()).unwrap().into_raw()
+        }
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn solnet_connect_peer(multiaddr: *const c_char, token: *const u8, token_len: usize) -> bool {
+    if !check_auth(token, token_len) || multiaddr.is_null() { return false; }
+    let addr = CStr::from_ptr(multiaddr).to_str().unwrap_or("");
+    p2p_node::dial_peer(addr)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn solnet_get_peer_count(token: *const u8, token_len: usize) -> i32 {
+    if !check_auth(token, token_len) { return 0; }
+    p2p_node::get_peer_count() as i32
+}
+
 /// # Safety
 /// `ptr` must have been obtained from a previous call to a `solnet_*` function
 /// that returned a `*mut c_char`. Double-free is undefined behavior.
@@ -354,6 +383,45 @@ pub mod jni_bridge {
         _class: JClass<'local>,
     ) -> jint {
         solnet_get_throttle_state() as jint
+    }
+
+    #[no_mangle]
+    pub extern "system" fn Java_com_solnet_mobile_SolnetNative_solnetInitP2PNode<'local>(
+        env: JNIEnv<'local>,
+        _class: JClass<'local>,
+        enable_mdns: jboolean,
+        token: JByteArray<'local>,
+    ) -> jstring {
+        let auth = env.convert_byte_array(&token).unwrap();
+        let ptr = unsafe { solnet_init_p2p_node(enable_mdns != JNI_FALSE, auth.as_ptr(), auth.len()) };
+        if ptr.is_null() { return std::ptr::null_mut(); }
+        let res = unsafe { CStr::from_ptr(ptr) }.to_str().unwrap_or("error");
+        let output = env.new_string(res).unwrap().into_raw();
+        unsafe { solnet_free_string(ptr) };
+        output
+    }
+
+    #[no_mangle]
+    pub extern "system" fn Java_com_solnet_mobile_SolnetNative_solnetConnectPeer<'local>(
+        mut env: JNIEnv<'local>,
+        _class: JClass<'local>,
+        multiaddr: JString<'local>,
+        token: JByteArray<'local>,
+    ) -> jboolean {
+        let addr: String = env.get_string(&multiaddr).unwrap().into();
+        let auth = env.convert_byte_array(&token).unwrap();
+        let c_addr = CString::new(addr).unwrap();
+        if unsafe { solnet_connect_peer(c_addr.as_ptr(), auth.as_ptr(), auth.len()) } { JNI_TRUE } else { JNI_FALSE }
+    }
+
+    #[no_mangle]
+    pub extern "system" fn Java_com_solnet_mobile_SolnetNative_solnetGetPeerCount<'local>(
+        env: JNIEnv<'local>,
+        _class: JClass<'local>,
+        token: JByteArray<'local>,
+    ) -> jint {
+        let auth = env.convert_byte_array(&token).unwrap();
+        unsafe { solnet_get_peer_count(auth.as_ptr(), auth.len()) }
     }
 
     #[no_mangle]

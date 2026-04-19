@@ -30,9 +30,14 @@ struct SnsNodeBehaviour {
     relay_client: relay::client::Behaviour,
     relay_server: relay::Behaviour,
     dcutr: libp2p::swarm::behaviour::toggle::Toggle<dcutr::Behaviour>,
+    #[cfg(feature = "mdns")]
+    mdns: libp2p::mdns::tokio::Behaviour,
     ping: ping::Behaviour,
     connection_limits: ConnectionLimitsBehaviour,
 }
+
+// Railway bootstrap — WSS only (Railway terminates TLS, raw TCP is not reachable)
+const BOOTSTRAP_ADDR: &str = "/dns4/solnet-production.up.railway.app/tcp/443/wss/p2p/12D3KooWAH253rSpr8ryATyS45AXq7whPN1giEv6A7pufF5fmmNj";
 
 // SECURITY NOTE: Gossipsub deliberately excluded.
 // CVE-2026-Gossipsub: Remote panic via crafted PRUNE.
@@ -84,14 +89,16 @@ pub async fn start_p2p_node(
     // Provide the platform constraint (mobile uses lower resource limits)
     let is_mobile = !platform_config.p2p_enabled;
 
-    // Build the swarm
+    // Build the swarm with WSS support
     let mut swarm = SwarmBuilder::with_existing_identity(local_key.clone())
         .with_tokio()
         .with_tcp(
             tcp::Config::default(),
-            (noise::Config::new, noise::Config::new),
+            noise::Config::new,
             yamux::Config::default,
         )?
+        .with_dns()?
+        .with_websocket(noise::Config::new, yamux::Config::default).await?
         .with_quic()
         .with_relay_client(noise::Config::new, yamux::Config::default)?
         .with_behaviour(|key, relay_client| {
@@ -147,6 +154,15 @@ pub async fn start_p2p_node(
             // (libp2p-dcutr doesn't expose a clean config for this yet, so we'll 
             // handle the prioritization log logic in the match loop)
 
+            #[cfg(feature = "mdns")]
+            let mdns = libp2p::mdns::tokio::Behaviour::new(
+                libp2p::mdns::Config::default(),
+                peer_id,
+            )?;
+            // NOTE: mDNS requires UDP multicast on the local network.
+            // Android requires: CHANGE_WIFI_MULTICAST_STATE permission + WifiManager.MulticastLock.
+            // mDNS is NOT enabled in production builds — bootstrap via WSS instead.
+
             Ok(SnsNodeBehaviour {
                 kademlia,
                 identify,
@@ -154,6 +170,8 @@ pub async fn start_p2p_node(
                 relay_client,
                 relay_server,
                 dcutr,
+                #[cfg(feature = "mdns")]
+                mdns,
                 ping,
                 connection_limits,
             })
@@ -164,6 +182,18 @@ pub async fn start_p2p_node(
              .with_notify_handler_buffer_size(NonZeroUsize::new(32).unwrap())
         })
         .build();
+
+    // Verify bootstrap node is reachable before dialling
+    #[cfg(not(target_os = "android"))]
+    {
+        match reqwest::blocking::get("https://solnet-production.up.railway.app/health") {
+            Ok(r) if r.status().is_success() => {
+                tracing::info!("Bootstrap node reachable: {}", r.text().unwrap_or_default());
+            }
+            Ok(r) => tracing::warn!("Bootstrap node returned HTTP {}", r.status()),
+            Err(e) => tracing::warn!("Bootstrap node unreachable: {e} — will retry via swarm"),
+        }
+    }
 
     // Listen addresses (TCP + QUIC)
     let tcp_addr: Multiaddr = format!("/ip4/0.0.0.0/tcp/{}", config.p2p_port).parse()?;
@@ -178,6 +208,18 @@ pub async fn start_p2p_node(
 
     info!("🔗 Node Multiaddr (TCP): /ip4/<your-ip>/tcp/{}/p2p/{}", config.p2p_port, local_peer_id);
     info!("🔗 Node Multiaddr (UDP): /ip4/<your-ip>/udp/{}/quic-v1/p2p/{}", config.p2p_port, local_peer_id);
+
+    // Initial explicit bootstrap dial
+    let bootstrap_addr: Multiaddr = BOOTSTRAP_ADDR.parse().expect("hardcoded bootstrap multiaddr is valid");
+    if let Err(e) = swarm.dial(bootstrap_addr.clone()) {
+        warn!("Initial bootstrap dial failed: {:?}", e);
+    }
+    tracing::info!("Dialling bootstrap node...");
+    
+    // Add to kademlia immediately
+    if let Some(libp2p::core::multiaddr::Protocol::P2p(peer_id)) = bootstrap_addr.iter().last() {
+        swarm.behaviour_mut().kademlia.add_address(&peer_id, bootstrap_addr);
+    }
 
     // Bootstrap Connection
     for addr_str in &config.bootstrap_nodes {
@@ -236,6 +278,18 @@ pub async fn start_p2p_node(
             }
             SwarmEvent::Behaviour(SnsNodeBehaviourEvent::Kademlia(event)) => {
                 debug!("🗺️  Kademlia event: {:?}", event);
+            }
+            #[cfg(feature = "mdns")]
+            SwarmEvent::Behaviour(SnsNodeBehaviourEvent::Mdns(libp2p::mdns::Event::Discovered(list))) => {
+                for (peer_id, addr) in list {
+                    swarm.behaviour_mut().kademlia.add_address(&peer_id, addr);
+                }
+            }
+            #[cfg(feature = "mdns")]
+            SwarmEvent::Behaviour(SnsNodeBehaviourEvent::Mdns(libp2p::mdns::Event::Expired(list))) => {
+                for (peer_id, addr) in list {
+                    swarm.behaviour_mut().kademlia.remove_address(&peer_id, &addr);
+                }
             }
             SwarmEvent::Behaviour(SnsNodeBehaviourEvent::Identify(identify::Event::Received { peer_id, info, .. })) => {
                 for addr in info.listen_addrs {

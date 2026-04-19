@@ -62,6 +62,11 @@ interface SolnetNativeInterface {
   // Governor Controls
   setThrottleState(state: number): Promise<void>;
   getThrottleState(): Promise<number>;
+
+  // P2P Mesh
+  initP2PNode(enableMdns: boolean): Promise<string>;
+  connectPeer(multiaddr: String): Promise<boolean>;
+  getPeerCount(): Promise<number>;
 }
 
 // ─── Module Resolution ───────────────────────────────────────────────────────
@@ -225,5 +230,31 @@ export const DaemonBridge = {
   ): EmitterSubscription | null {
     if (!emitter) return null;
     return emitter.addListener('DaemonLogLine', callback);
+  },
+
+  /**
+   * Initialize P2P node with hybrid discovery
+   * @param enableMdns - Whether to start mDNS listener (battery cost!)
+   */
+  async initP2PNode(enableMdns: boolean = false): Promise<{ status: string; peer_id?: string; message?: string }> {
+    if (IS_STUB) return { status: 'running', peer_id: 'sns-stub-peer-id' };
+    const result = await _NativeModule!.initP2PNode(enableMdns);
+    return JSON.parse(result);
+  },
+
+  /**
+   * Manually connect to a specific peer
+   */
+  async dialPeer(multiaddr: string): Promise<boolean> {
+    if (IS_STUB) return true;
+    return await _NativeModule!.connectPeer(multiaddr);
+  },
+
+  /**
+   * Get current peer count from the mesh
+   */
+  async getPeerCount(): Promise<number> {
+    if (IS_STUB) return 1;
+    return await _NativeModule!.getPeerCount();
   },
 } as const;

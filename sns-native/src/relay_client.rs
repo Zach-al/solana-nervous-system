@@ -111,6 +111,10 @@ enum RelayResponse {
 
 // ── Public API (called from lib.rs FFI exports) ──────────────────────────────
 
+pub fn get_runtime() -> Option<&'static tokio::runtime::Runtime> {
+    RELAY_RT.get()
+}
+
 /// Start the relay client with the given config.
 /// Idempotent — safe to call multiple times.
 /// Returns Ok(()) if started or already running.
