@@ -61,6 +61,7 @@ features = [
 
 [features]
 default = []
+mdns = ["libp2p/mdns"]
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }

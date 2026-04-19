@@ -90,6 +90,7 @@ pub async fn start_p2p_node(
     let is_mobile = !platform_config.p2p_enabled;
 
     // Build the swarm with WSS support
+    // THE ORDER MATTERS: TCP -> QUIC -> DNS -> WebSocket -> Relay
     let mut swarm = SwarmBuilder::with_existing_identity(local_key.clone())
         .with_tokio()
         .with_tcp(
@@ -97,11 +98,11 @@ pub async fn start_p2p_node(
             noise::Config::new,
             yamux::Config::default,
         )?
+        .with_quic()
         .with_dns()?
         .with_websocket(noise::Config::new, yamux::Config::default).await?
-        .with_quic()
         .with_relay_client(noise::Config::new, yamux::Config::default)?
-        .with_behaviour(|key, relay_client| {
+        .with_behaviour(|key: &libp2p::identity::Keypair, relay_client: libp2p::relay::client::Behaviour| {
             let peer_id = key.public().to_peer_id();
 
             // Kademlia
@@ -150,20 +151,13 @@ pub async fn start_p2p_node(
             // Ping to keep track of connection health
             let ping = ping::Behaviour::new(ping::Config::new().with_interval(Duration::from_secs(15)));
 
-            // Security: Set DCUtR cooldown to 60s for Android stability
-            // (libp2p-dcutr doesn't expose a clean config for this yet, so we'll 
-            // handle the prioritization log logic in the match loop)
-
             #[cfg(feature = "mdns")]
             let mdns = libp2p::mdns::tokio::Behaviour::new(
                 libp2p::mdns::Config::default(),
                 peer_id,
             )?;
-            // NOTE: mDNS requires UDP multicast on the local network.
-            // Android requires: CHANGE_WIFI_MULTICAST_STATE permission + WifiManager.MulticastLock.
-            // mDNS is NOT enabled in production builds — bootstrap via WSS instead.
 
-            Ok(SnsNodeBehaviour {
+            Ok::<SnsNodeBehaviour, Box<dyn std::error::Error + Send + Sync>>(SnsNodeBehaviour {
                 kademlia,
                 identify,
                 autonat,
@@ -176,7 +170,7 @@ pub async fn start_p2p_node(
                 connection_limits,
             })
         })?
-        .with_swarm_config(|c| {
+        .with_swarm_config(|c: libp2p::swarm::Config| {
             c.with_idle_connection_timeout(Duration::from_secs(30))
              .with_max_negotiating_inbound_streams(10)
              .with_notify_handler_buffer_size(NonZeroUsize::new(32).unwrap())

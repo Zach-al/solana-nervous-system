@@ -14,7 +14,7 @@ use libp2p::ping;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 use std::sync::OnceLock;
-use tracing::{error, info, warn, debug};
+use tracing::{error, info};
 
 // Railway bootstrap — WSS only (Railway terminates TLS, raw TCP is not reachable)
 const BOOTSTRAP_ADDR: &str = "/dns4/solnet-production.up.railway.app/tcp/443/wss/p2p/12D3KooWAH253rSpr8ryATyS45AXq7whPN1giEv6A7pufF5fmmNj";
@@ -40,7 +40,7 @@ enum P2PCommand {
     Dial(Multiaddr),
 }
 
-pub fn init_node(enable_mdns: bool) -> Result<String, String> {
+pub fn init_node(_enable_mdns: bool) -> Result<String, String> {
     if P2P_RUNNING.load(Ordering::SeqCst) {
         return Ok("already_running".to_string());
     }
@@ -79,7 +79,7 @@ pub fn init_node(enable_mdns: bool) -> Result<String, String> {
                     );
 
                     #[cfg(feature = "mdns")]
-                    let mdns = if enable_mdns {
+                    let mdns = if _enable_mdns {
                         let m = libp2p::mdns::tokio::Behaviour::new(libp2p::mdns::Config::default(), peer_id)?;
                         Some(m)
                     } else {

@@ -22,7 +22,7 @@ jni = { version = "0.21", optional = true }
 uuid = { version = "1.5", features = ["v4"] }
 anyhow = "1.0"
 tokio = { version = "1.33.0", features = ["full", "sync", "macros", "rt-multi-thread"] }
-reqwest = { version = "0.12", features = ["json", "rustls-tls", "blocking"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "blocking"] }
 libp2p = { version = "0.55.0", features = [
     "kad",
     "identify",
