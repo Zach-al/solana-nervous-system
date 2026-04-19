@@ -21,7 +21,7 @@ interface TerminalFeedProps {
 export default function TerminalFeed({ isActive, nodeId }: TerminalFeedProps) {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [cursorVisible, setCursorVisible] = useState(true);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const timerRef = useRef<any>(null);
   const scrollRef = useRef<ScrollView>(null);
 
   useEffect(() => {

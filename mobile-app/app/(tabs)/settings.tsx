@@ -3,7 +3,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useWallet } from '../../hooks/useWallet';
 import { CONFIG } from '../../constants/theme';
 import { useRouter } from 'expo-router';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SecureStore from 'expo-secure-store';
 import { useState, useEffect } from 'react';
 import { DaemonBridge } from '../../services/DaemonBridge';
 import { TextInput } from 'react-native';
@@ -41,7 +41,7 @@ export default function SettingsScreen() {
 
   const handleDisconnect = async () => {
     await disconnect();
-    await AsyncStorage.removeItem('onboarding_complete');
+    await SecureStore.deleteItemAsync('onboarding_complete');
     router.replace('/(onboarding)/welcome');
   };
 

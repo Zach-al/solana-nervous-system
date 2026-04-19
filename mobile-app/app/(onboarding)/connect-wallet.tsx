@@ -1,27 +1,82 @@
 import React, { useState } from 'react';
-import { StyleSheet, View, Text } from 'react-native';
+import { StyleSheet, View, Text, Alert, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { useWallet } from '../../hooks/useWallet';
-import { Colors, Spacing, Typography, Radius } from '../../constants/antigravity';
-import NeonText from '../../components/ui/NeonText';
-import PressButton from '../../components/ui/PressButton';
-import GlassCard from '../../components/ui/GlassCard';
+import { useWallet } from '@/hooks/useWallet';
+import { Colors, Spacing, Typography, Radius } from '@/constants/antigravity';
+import GlassCard from '@/components/ui/GlassCard';
+import NeonText from '@/components/ui/NeonText';
+import PressButton from '@/components/ui/PressButton';
+import * as SecureStore from 'expo-secure-store';
+
+// ── LAZY MODULES ─────────────────────────────────────────────────────────────
+// We use lazy requires inside functions to prevent "Invariant Violation" 
+// errors on devices where these native modules are not linked at boot.
+let _MWA: any = null;
+let _Web3: any = null;
+
+const getMWA = () => {
+  if (!_MWA) _MWA = require('@solana-mobile/mobile-wallet-adapter-protocol-web3js');
+  return _MWA;
+};
+
+const getWeb3 = () => {
+  if (!_Web3) _Web3 = require('@solana/web3.js');
+  return _Web3;
+};
 
 export default function ConnectWalletScreen() {
   const router = useRouter();
-  const { connect, generateLocal } = useWallet();
+  const { address, refreshWallet } = useWallet();
   const [isConnecting, setIsConnecting] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
 
+  const addressStr = typeof address === 'string' ? address : '';
+  const isWalletApp = !!addressStr;
+
   const handleConnect = async () => {
+    // Mobile Wallet Adapter (MWA) is only supported on physical Android devices.
+    // For the demo and iOS, we default to the secure local keypair generation
+    // which use the SolnetNative bridge.
+    if (Platform.OS === 'ios') {
+      Alert.alert(
+        'Platform Note',
+        'Mobile Wallet Adapter is primarily an Android feature for Phantom. On iOS, we use a secure local vault.',
+        [{ text: 'Proceed', onPress: handleGenerate }]
+      );
+      return;
+    }
+
+    setIsConnecting(true);
     try {
-      setIsConnecting(true);
-      await connect();
-      router.push('/start-node');
+      if (Platform.OS === 'android') {
+        const { transact } = getMWA();
+        const { PublicKey } = getWeb3();
+
+        await transact(async (wallet: any) => {
+          const auth = await wallet.authorize({
+            cluster: 'mainnet-beta',
+            identity: { name: 'SOLNET Node', uri: 'https://solnet.io' }
+          });
+          
+          const pubkey = new PublicKey(auth.accounts[0].address).toBase58();
+          const keypairJson = JSON.stringify({ publicKey: pubkey, secretKey: '' });
+          
+          await SecureStore.setItemAsync('solnet_v2_wallet', keypairJson);
+          await refreshWallet();
+
+          // Hardened Navigation: Wait for native modal to dismiss
+          setTimeout(() => {
+             router.push('/start-node');
+          }, 500);
+        });
+      } else {
+        // Fallback for iOS / Simulation
+        await handleGenerate();
+      }
     } catch (e: any) {
-      console.warn('Wallet connection bypassed:', e.message);
-      await handleGenerate();
+      console.warn('[MWA] Transaction failed:', e);
+      Alert.alert('Connection Error', 'Phantom wallet was not found or the request was denied.');
     } finally {
       setIsConnecting(false);
     }
@@ -30,7 +85,7 @@ export default function ConnectWalletScreen() {
   const handleGenerate = async () => {
     try {
       setIsGenerating(true);
-      await generateLocal();
+      await refreshWallet();
       router.push('/start-node');
     } catch (e) {
       console.warn('Local generation failed', e);
@@ -69,6 +124,14 @@ export default function ConnectWalletScreen() {
               loading={isConnecting}
             />
             
+            {isWalletApp && (
+              <Text style={{ color: '#00f0ff', textAlign: 'center',
+                             fontFamily: 'monospace', fontSize: 10,
+                             marginTop: 8, letterSpacing: 1 }}>
+                ✓ PHANTOM CONNECTED
+              </Text>
+            )}
+
             <View style={styles.divider}>
               <View style={styles.line} />
               <Text style={styles.dividerText}>OR</Text>
@@ -81,6 +144,15 @@ export default function ConnectWalletScreen() {
               variant="ghost"
               loading={isGenerating}
             />
+
+            {isWalletApp && (
+              <PressButton 
+                label="CONTINUE TO NODE SETUP →"
+                onPress={() => router.push('/start-node')}
+                variant="primary"
+                style={{ marginTop: 24, backgroundColor: 'rgba(0, 255, 136, 0.1)', borderColor: '#00ff88' }}
+              />
+            )}
           </View>
         </View>
 

@@ -5,7 +5,7 @@ import { useRouter } from 'expo-router';
 import { useWallet } from '../../hooks/useWallet';
 import { registerNode } from '../../services/solnetApi';
 import * as SecureStore from 'expo-secure-store';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+// Removed AsyncStorage in favor of SecureStore
 import { useNodeStore } from '../../stores/nodeStore';
 import * as Crypto from 'expo-crypto';
 import { Colors, Spacing, Typography, Radius } from '../../constants/antigravity';
@@ -29,13 +29,13 @@ export default function StartNodeScreen() {
       if (res.success) {
         await SecureStore.setItemAsync('solnet_node_id', res.node_id);
         setNodeId(res.node_id);
-        await AsyncStorage.setItem('onboarding_complete', 'true');
+        await SecureStore.setItemAsync('onboarding_complete', 'true');
         router.replace('/(tabs)');
       }
     } catch (e) {
       console.error(e);
       // Hard fallback to enter the app even if registration fails temporarily
-      await AsyncStorage.setItem('onboarding_complete', 'true');
+      await SecureStore.setItemAsync('onboarding_complete', 'true');
       router.replace('/(tabs)');
     } finally {
       setIsInitializing(false);

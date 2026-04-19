@@ -10,19 +10,18 @@ import { useNodeStore } from '../stores/nodeStore';
  */
 export function useLocalNodeStats() {
   const { isActive, updateFromLocalStats } = useNodeStore();
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const timerRef = useRef<any>(null);
 
   useEffect(() => {
-    if (isActive && DaemonBridge.isAvailable) {
+    if (isActive) {
       const poll = async () => {
         try {
           const stats = await DaemonBridge.getStats();
-          if (!stats.isStub) {
-            updateFromLocalStats({
-              requests_served: stats.requests_served,
-              uptime_seconds: stats.uptime_seconds,
-            });
-          }
+          // Always update, whether stub or real, to provide feedback
+          updateFromLocalStats({
+            requests_served: stats.requests_served,
+            uptime_seconds: stats.uptime_seconds,
+          });
         } catch (err) {
           console.warn('[useLocalNodeStats] Bridge polling failed:', err);
         }

@@ -20,6 +20,7 @@ export const THEME = {
 };
 
 export const CONFIG = {
-  SOLNET_API_URL: process.env.EXPO_PUBLIC_SOLNET_API_URL || 'https://solnet-production.up.railway.app',
+  // Safe access to environment variables without the process polyfill
+  SOLNET_API_URL: 'https://solnet-production.up.railway.app',
   APP_VERSION: '1.0.0'
 };

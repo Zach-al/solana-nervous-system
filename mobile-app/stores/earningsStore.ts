@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { MemoryStorage } from '../services/Storage';
 import type { HealthResponse, EarningEntry } from '../types';
 
 interface EarningsState {
@@ -57,7 +57,7 @@ export const useEarningsStore = create<EarningsState>()(
     }),
     {
       name: 'solnet-earnings-storage',
-      storage: createJSONStorage(() => AsyncStorage),
+      storage: createJSONStorage(() => MemoryStorage),
     }
   )
 );

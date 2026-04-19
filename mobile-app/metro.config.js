@@ -5,28 +5,25 @@ const path = require('path');
 const projectRoot = __dirname;
 const config = getDefaultConfig(projectRoot);
 
-// 1. pnpm/Monorepo Resolution Strategy
-// We expose both the local node_modules and the pnpm virtual store node_modules
+// ── PNPM RECONCILIATION ───────────────────────────────────────────
+// Force all dependencies to resolve to the root node_modules.
+// This prevents "Tried to register two views with the same name"
+// by ensuring there's exactly one copy of react-native in the bundle.
+const extraNodeModules = {
+  'react-native': path.resolve(projectRoot, 'node_modules/react-native'),
+  'react': path.resolve(projectRoot, 'node_modules/react'),
+  '@react-native-async-storage/async-storage': path.resolve(projectRoot, 'node_modules/@react-native-async-storage/async-storage'),
+};
+
+config.resolver.extraNodeModules = extraNodeModules;
+
+// Keep it simple - avoid multiple nodeModulesPaths which can cause 
+// the duplicate view registration issues in monorepos or pnpm setups.
 config.resolver.nodeModulesPaths = [
   path.resolve(projectRoot, 'node_modules'),
-  path.resolve(projectRoot, 'node_modules/.pnpm/node_modules'),
 ];
 
-// 2. The "Nuclear" pnpm Fix
-// Official flag to stop Metro from failing when it enters symlinked .pnpm folders
-config.resolver.disableHierarchicalLookup = true;
-
-// 3. Modern Package Support (Required for SDK 54)
-config.resolver.unstable_enablePackageExports = true;
-
-// 4. Solana web3.js ESM support (.mjs)
-config.resolver.sourceExts = ['mjs', ...config.resolver.sourceExts];
-
-// 5. Global Node Polyfills
-config.resolver.extraNodeModules = {
-  ...config.resolver.extraNodeModules,
-  crypto: require.resolve('expo-standard-web-crypto'),
-  stream: require.resolve('readable-stream'),
-};
+// Ensure we look for .js and .json in the correct order
+config.resolver.sourceExts = [...config.resolver.sourceExts, 'mjs', 'cjs'];
 
 module.exports = withNativeWind(config, { input: './global.css' });

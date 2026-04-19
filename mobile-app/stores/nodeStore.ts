@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { HealthResponse } from '../types';
+import { MemoryStorage } from '../services/Storage';
 
 interface NodeState {
   isActive: boolean;
@@ -43,7 +43,8 @@ export const useNodeStore = create<NodeState>()(
     }),
     {
       name: 'solnet-node-storage',
-      storage: createJSONStorage(() => AsyncStorage),
+      // Using MemoryStorage to bypass the "AsyncStorage is null" crash
+      storage: createJSONStorage(() => MemoryStorage),
       partialize: (state) => ({ isActive: state.isActive, nodeId: state.nodeId }),
     }
   )

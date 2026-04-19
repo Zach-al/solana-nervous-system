@@ -6,8 +6,8 @@ module.exports = function (api) {
       "nativewind/babel",
     ],
     plugins: [
-      // ["babel-plugin-react-compiler", { target: "19" }],
       "react-native-reanimated/plugin",
+      "babel-plugin-module-resolver"
     ],
   };
 };

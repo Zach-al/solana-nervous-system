@@ -114,6 +114,11 @@ export default function DashboardScreen() {
               >
                 SOLNET
               </NeonText>
+              {DaemonBridge.isStub && (
+                <View style={styles.simBadge}>
+                  <Text style={styles.simBadgeText}>SIMULATED NODE</Text>
+                </View>
+              )}
               {requestsServed > 0 && <NodeRankBadge requestsServed={requestsServed} />}
             </View>
             <TouchableOpacity 
@@ -370,5 +375,22 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#ff6b6b',
     flex: 1,
+  },
+  simBadge: {
+    backgroundColor: 'rgba(168, 85, 247, 0.15)',
+    borderColor: 'rgba(168, 85, 247, 0.5)',
+    borderWidth: 1,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginTop: 4,
+    alignSelf: 'flex-start',
+  },
+  simBadgeText: {
+    ...Typography.mono,
+    fontSize: 9,
+    color: '#a855f7',
+    fontWeight: '700',
+    letterSpacing: 1,
   },
 });
