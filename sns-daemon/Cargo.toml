@@ -40,7 +40,7 @@ libp2p-connection-limits = "0.6.0"
 
 # Security: explicit feature control
 [dependencies.libp2p]
-version = "0.55.0"
+version = "0.56.0"
 features = [
     "kad",
     "identify",
