@@ -399,6 +399,16 @@ async fn rpc_handler(
     let upstream_rpc = state.load_balancer.select_node().await.unwrap_or_else(|| state.solana_rpc_url.clone());
     let client = state.latency_engine.connection_pool.get_client();
 
+    // Before forwarding to validator:
+    if let Err(violation) = verify_with_brahman(method, params, &client).await {
+        let mut r = (
+            StatusCode::FORBIDDEN,
+            Json(serde_json::json!({"error": violation}))
+        ).into_response();
+        r.headers_mut().extend(security_headers());
+        return r;
+    }
+
     match client.post(&upstream_rpc).header("Content-Type", "application/json").body(body_str.to_string()).send().await {
         Ok(resp) => {
             let latency_us = start_instant.elapsed().as_micros() as u64;
@@ -843,4 +853,73 @@ async fn telemetry_aggregate_handler(
     })).into_response();
     r.headers_mut().extend(security_headers());
     r
+}
+
+async fn verify_with_brahman(
+    method: &str,
+    params: &serde_json::Value,
+    client: &reqwest::Client,
+) -> Result<bool, String> {
+    // Only verify state-changing methods
+    // Read-only methods skip verification for speed
+    let skip_methods = vec![
+        "getBalance", "getSlot", "getBlock", 
+        "getTransaction", "getAccountInfo",
+        "getRecentBlockhash", "getLatestBlockhash",
+    ];
+    
+    if skip_methods.iter().any(|m| *m == method) {
+        return Ok(true); // Skip verification for reads
+    }
+    
+    // Build Kāraka Protocol payload for state-changing tx
+    let karaka_payload = serde_json::json!({
+        "karaka_protocol": {
+            "kriya": {
+                "surface": method,
+                "resolved_root": "transfer"
+            },
+            "karta": {
+                "surface": "sender",
+                "lemma": "sender",
+                "constraints": []
+            }
+        },
+        "raw_input": format!("{} {}", method, params)
+    });
+    
+    // Call Brahman sovereign node
+    let response = client
+        .post("http://127.0.0.1:8420/verify/kp")
+        .header("X-API-Key", "brahman-dev-secret-key-123")
+        .header("Content-Type", "application/json")
+        .json(&karaka_payload)
+        .timeout(std::time::Duration::from_millis(50))
+        .send()
+        .await
+        .map_err(|e| format!("Brahman unreachable: {}", e))?;
+    
+    let result: serde_json::Value = response.json().await
+        .map_err(|e| format!("Brahman parse error: {}", e))?;
+    
+    let verdict = result["verdict"].as_str().unwrap_or("AMBIGUOUS");
+    let logic_hash = result["logic_hash"].as_str().unwrap_or("");
+    
+    match verdict {
+        "VALID" => {
+            let hash_disp = if logic_hash.len() >= 8 { &logic_hash[..8] } else { logic_hash };
+            tracing::info!("Brahman VALID {} hash={}", method, hash_disp);
+            Ok(true)
+        }
+        "INVALID" => {
+            let violations = result["violations"].to_string();
+            tracing::warn!("Brahman INVALID {} violations={}", method, violations);
+            Err(format!("Transaction blocked by Brahman: {}", violations))
+        }
+        _ => {
+            // AMBIGUOUS — let it through but log it
+            tracing::warn!("Brahman AMBIGUOUS {} — flagged for review", method);
+            Ok(true)
+        }
+    }
 }
